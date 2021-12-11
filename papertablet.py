@@ -7,21 +7,38 @@
 import cv2
 import numpy as np
 from getCorners import run 
-from getCorners import get_arucos
+from getCorners import getArucos
 import scipy.io
 
 
-def getSortedCorners(arucos):
-    _sorted = [None]*4
-    for i in range(len(arucos["ids"])):
-        _sorted[arucos["ids"][i][0]]=arucos["corners"][i]
-    return _sorted
+def getSourceCorners(arucos):
+    sourceCorners = []
+    numb_arucos = len(arucos["corners"])
+    for i in range(numb_arucos):
+        for j in range(arucos["corners"][i][0].shape[0]):
+            sourceCorners.append(np.array(arucos["corners"][i][0][j]))
+    return np.array(sourceCorners)
+
+def getDestCorners(sourceIDs,referenceCorners):
+    destCorners=[]
+    for _id in sourceIDs:
+        destCorners.append(referenceCorners[_id[0]])
+    return np.array(destCorners)
+
+def getReferenceCorners(referenceArucos):
+    referenceCorners={}
+    numbArucos=len(referenceArucos["corners"])
+    for i in range(numbArucos):
+        referenceCorners[referenceArucos["ids"][i][0]] = np.array([corner for corner 
+                                                          in referenceArucos["corners"][i][0]])
+    return referenceCorners
+
 
 #run('Dataset/template1_manyArucos.png');
-run('Dataset/template2_fewArucos.png');
+run('Dataset/template2_fewArucos.png')
 
-reference_arucos = scipy.io.loadmat('cornersIds.mat')
-reference_corners=getSortedCorners(reference_arucos)
+referenceArucos = scipy.io.loadmat('cornersIds.mat')
+referenceCorners=getReferenceCorners(referenceArucos)
 
 input_video_path = './Dataset/FewArucos-Viewpoint1.mp4'
 
@@ -30,12 +47,12 @@ cap = cv2.VideoCapture(input_video_path)
 
 while(cap.isOpened()):
     ret, frame = cap.read()
-    arucos=get_arucos(frame)
-    corners=getSortedCorners(arucos)
-    print(corners)
-    #print(corners["corners"])
-    #print(frame, ret)
     if ret:
+        arucos=getArucos(frame)
+        corners=getSourceCorners(arucos)
+        destCorners= getDestCorners(arucos["ids"],referenceCorners)
+        M,mask = cv2.findHomography(corners, destCorners)
+        print(M)
         frame_copy=frame.copy()
         concatenated = np.concatenate((frame,frame_copy),axis=1)
         concatenated=cv2.resize(concatenated,(960,540))
