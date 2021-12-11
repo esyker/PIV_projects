@@ -5,6 +5,7 @@
 #https://www.pyimagesearch.com/2020/12/21/detecting-aruco-markers-with-opencv-and-python/
 #https://www.pyimagesearch.com/2018/07/23/simple-object-tracking-with-opencv/
 import cv2
+import numpy as np
 from getCorners import run 
 import scipy.io
 
@@ -41,8 +42,14 @@ while(cap.isOpened()):
     ret, frame = cap.read()
     print(frame, ret)
     if ret:
-        cv2.imshow("frame", frame)
-        cv2.waitKey(1)
+        frame_copy=frame.copy()
+        concatenated = np.concatenate((frame,frame_copy),axis=1)
+        concatenated=cv2.resize(concatenated,(960,540))
+        cv2.imshow("original and homography",concatenated)
+        k=cv2.waitKey(30) & 0xff
+        #once you inter video will stop
+        if k==27:
+            break
     else:
         break
 
