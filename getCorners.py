@@ -48,7 +48,7 @@ def run(img_path):
 
     return
 
-def get_corners(img):
+def get_arucos(img):
     if img is None:
         print("getCorners: Unable to read the template.")
         exit(-1)

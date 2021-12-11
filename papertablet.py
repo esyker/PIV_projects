@@ -7,13 +7,21 @@
 import cv2
 import numpy as np
 from getCorners import run 
-from getCorners import get_corners
+from getCorners import get_arucos
 import scipy.io
+
+
+def getSortedCorners(arucos):
+    _sorted = [None]*4
+    for i in range(len(arucos["ids"])):
+        _sorted[arucos["ids"][i][0]]=arucos["corners"][i]
+    return _sorted
 
 #run('Dataset/template1_manyArucos.png');
 run('Dataset/template2_fewArucos.png');
 
-mat = scipy.io.loadmat('cornersIds.mat')
+reference_arucos = scipy.io.loadmat('cornersIds.mat')
+reference_corners=getSortedCorners(reference_arucos)
 
 input_video_path = './Dataset/FewArucos-Viewpoint1.mp4'
 
@@ -22,8 +30,10 @@ cap = cv2.VideoCapture(input_video_path)
 
 while(cap.isOpened()):
     ret, frame = cap.read()
-    corners=get_corners(frame)
-    print(corners["corners"])
+    arucos=get_arucos(frame)
+    corners=getSortedCorners(arucos)
+    print(corners)
+    #print(corners["corners"])
     #print(frame, ret)
     if ret:
         frame_copy=frame.copy()
