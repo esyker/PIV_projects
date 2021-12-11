@@ -31,8 +31,8 @@ def initArucoPos(template, aruco_dict, arucoParameters):
 
 
 def run(img_path):
-    
     img_template = cv2.imread(img_path)
+
     if img_template is None:
         print("getCorners: Unable to read the template.")
         exit(-1)
@@ -47,3 +47,19 @@ def run(img_path):
     savemat("cornersIds.mat", dict)
 
     return
+
+def get_corners(img):
+    if img is None:
+        print("getCorners: Unable to read the template.")
+        exit(-1)
+
+    #The arucos in the template must be the ones in this dictionary
+    dict4_7by7 = aruco.getPredefinedDictionary(aruco.DICT_7X7_50)
+
+    arucoParameters = aruco.DetectorParameters_create()
+    corners, ids = initArucoPos(img, dict4_7by7, arucoParameters)
+
+    dict = {"corners": corners, "ids": ids}
+
+    return dict
+    

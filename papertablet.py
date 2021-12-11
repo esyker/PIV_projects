@@ -7,40 +7,24 @@
 import cv2
 import numpy as np
 from getCorners import run 
+from getCorners import get_corners
 import scipy.io
 
-run('Dataset/template1_manyArucos.png');
+#run('Dataset/template1_manyArucos.png');
 run('Dataset/template2_fewArucos.png');
 
 mat = scipy.io.loadmat('cornersIds.mat')
 
 input_video_path = './Dataset/FewArucos-Viewpoint1.mp4'
 
-"""
-# capture video
-cap = cv2.VideoCapture(0)
-#descripe a loop
-#read video frame by frame
-while True:
-    ret,img = cap.read()
-    cv2.imshow('Original Video',img)
-    #flip for truning(fliping) frames of video
-    img2=cv2.flip(img,-1)
-    cv2.imshow('Flipped video',img2)
-    k=cv2.waitKey(30) & 0xff
-    #once you inter Esc capturing will stop
-    if k==27:
-        break
-cap.release()
-cv2.destroyAllWindows()
-"""
-
 #Show video
 cap = cv2.VideoCapture(input_video_path)
 
 while(cap.isOpened()):
     ret, frame = cap.read()
-    print(frame, ret)
+    corners=get_corners(frame)
+    print(corners["corners"])
+    #print(frame, ret)
     if ret:
         frame_copy=frame.copy()
         concatenated = np.concatenate((frame,frame_copy),axis=1)
