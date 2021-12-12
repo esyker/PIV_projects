@@ -9,7 +9,7 @@ import numpy as np
 from getCorners import run 
 from getCorners import getArucos
 import scipy.io
-
+import time
 
 def getSourceCorners(arucos):
     sourceCorners = []
@@ -46,6 +46,7 @@ input_video_path = './Dataset/FewArucos-Viewpoint1.mp4'
 
 #Show video
 cap = cv2.VideoCapture(input_video_path)
+start_time = time.time()
 
 while(cap.isOpened()):
     ret, frame = cap.read()
@@ -54,9 +55,9 @@ while(cap.isOpened()):
         corners=getSourceCorners(arucos)
         destCorners= getDestCorners(arucos["ids"],referenceCorners)
         M,mask = cv2.findHomography(corners, destCorners)
-        print(M)
-        frame_copy=frame.copy()
-        concatenated = np.concatenate((frame,frame_copy),axis=1)
+        rotated=cv2.warpPerspective(frame,M,(frame.shape[1],frame.shape[0]))
+        #print(M)
+        concatenated = np.concatenate((frame,rotated),axis=1)
         concatenated=cv2.resize(concatenated,(960,540))
         cv2.imshow("original and homography",concatenated)
         k=cv2.waitKey(30) & 0xff
@@ -65,6 +66,8 @@ while(cap.isOpened()):
             break
     else:
         break
+
+print("--- %s seconds ---" % (time.time() - start_time))
 
 cap.release()
 cv2.destroyAllWindows()

@@ -25,7 +25,7 @@ def initArucoPos(template, aruco_dict, arucoParameters):
         print("getCorners: Could not detect Aruco markers. Exiting.")
         exit(0)
 
-    print("getCorners: Detected {} Aruco markers.".format(np.size(corners,0)))
+    #print("getCorners: Detected {} Aruco markers.".format(np.size(corners,0)))
 
     return corners, ids
 
