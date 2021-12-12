@@ -22,15 +22,17 @@ def getSourceCorners(arucos):
 def getDestCorners(sourceIDs,referenceCorners):
     destCorners=[]
     for _id in sourceIDs:
-        destCorners.append(referenceCorners[_id[0]])
+        corner = referenceCorners[_id[0]]
+        for point in corner: 
+            destCorners.append(point)
     return np.array(destCorners)
 
 def getReferenceCorners(referenceArucos):
     referenceCorners={}
     numbArucos=len(referenceArucos["corners"])
     for i in range(numbArucos):
-        referenceCorners[referenceArucos["ids"][i][0]] = np.array([corner for corner 
-                                                          in referenceArucos["corners"][i][0]])
+        referenceCorners[referenceArucos["ids"][i][0]] = [corner for corner 
+                                                          in referenceArucos["corners"][i][0]]
     return referenceCorners
 
 
