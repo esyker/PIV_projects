@@ -10,6 +10,7 @@ from getCorners import run
 from getCorners import getArucos
 import scipy.io
 import time
+import matplotlib.pyplot as plt
 
 def getSourceCorners(arucos):
     sourceCorners = []
@@ -71,3 +72,13 @@ print("--- %s seconds ---" % (time.time() - start_time))
 
 cap.release()
 cv2.destroyAllWindows()
+
+#check if homography is correct
+plt.figure()
+plt.imshow(frame)
+original_point=np.array([1254,302,1])
+plt.scatter(original_point[0], original_point[1], s=5, c='red', marker='o')
+plt.figure()
+plt.imshow(rotated)
+rotated_point = np.matmul(M,original_point)
+plt.scatter(rotated_point[0], rotated_point[1], s=5, c='red', marker='o')
