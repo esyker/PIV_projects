@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 def findHomography(sourcePoints, destPoints):
     A=[]
-    for i in range(4):
+    for i in range(4,8):
         x1=sourcePoints[i][0]
         y1=sourcePoints[i][1]
         x2=destPoints[i][0]
@@ -26,7 +26,7 @@ def findHomography(sourcePoints, destPoints):
     u, s, vh = np.linalg.svd(A,full_matrices=True)#svd decomposition
     h=vh[-1]
     h=h.reshape((3,3))
-    h=h/h[2][2]#normalize matrix
+    #h=h/h[2][2]#normalize matrix
     return h
     
 def getSourceCorners(arucos):
