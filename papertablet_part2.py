@@ -1,133 +1,145 @@
 import cv2
 import numpy as np
-from numpy.core.fromnumeric import shape, size
-from numpy.lib.shape_base import expand_dims, tile
-from getCorners import run 
-from getCorners import getArucos
-import scipy.io
-import time
-import matplotlib.pyplot as plt
-orb = cv2.ORB_create()
+import os
+import argparse
 
-calib_asus = scipy.io.loadmat('Dataset/calib_asus.mat')
-depth2_0 = scipy.io.loadmat('Dataset/imgs2depth/depth2cams_0000.mat')
-depth2_1 = scipy.io.loadmat('Dataset/imgs2depth/depth2cams_0001.mat')
-rgb2_0 = cv2.imread('Dataset/imgs2depth/rgb2cams_0000.jpg',cv2.COLOR_BGR2GRAY)
-rgb2_1 = cv2.imread('Dataset/imgs2depth/rgb2cams_0001.jpg',cv2.COLOR_BGR2GRAY)
-
-def get_xyz_asus (image_vect, image_original_size, K):
+def initArucoPos(template, aruco_dict, arucoParameters):
     """
-    Return the xyz coordinates
-    input :
-    output :
-        | fsx   0   Cx |   | Kx  0   Cx |
-    K = |  0   fsy  Cy | = | 0   Ky  Cy | 
-        |  0    0   1  |   | 0   0   1  |
+    Returns the corners of the Aruco markers in the template image. Note that the corners sequence is the same as
+    the ids sequence. Example: if ids[0] has value 2 then corners[0] has corners of Aruco marker with id=2.
+    :param template: template image
+    :param aruco_dict: dictionary of Aruco codes used in the template image
+    """
+    gray_template = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+    corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray_template, aruco_dict, parameters=arucoParameters)
+    if len(corners) == 0:
+        print("getCorners: Could not detect Aruco markers. Exiting.")
+        exit(0)
+    return corners, ids
 
+def getArucos(img):
+    """
+    Returns the Aruco markers' coordinates (in pixels)
+    and ids. The order of the coordinates is the same as the order of the ids. Example: if ids[0] has value 2 then
+    corners[0] has corners of Aruco marker with id=2.
+    :param img: input image
+    """
+    if img is None:
+        print("getCorners: Unable to read the template.")
+        exit(-1)
+    #The arucos in the template must be the ones in this dictionary
+    dict4_7by7 = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_7X7_50)
+    arucoParameters = cv2.aruco.DetectorParameters_create()
+    corners, ids = initArucoPos(img, dict4_7by7, arucoParameters)
+    dict = {"corners": corners, "ids": ids}
+    return dict
+
+def getSourceCorners(arucos):
+    """
+    Returns the corners' points from the detected arucos data structure obtained
+    using getArucos
+    :param arucos: Aruco markers' coordinates (in pixels) and ids.
+    """
+    sourceCorners = []
+    numb_arucos = len(arucos["corners"])
+    for i in range(numb_arucos):
+        for j in range(arucos["corners"][i][0].shape[0]):
+            sourceCorners.append(np.array(arucos["corners"][i][0][j]))
+    return np.array(sourceCorners)
+
+def getDestCorners(sourceArucosIDs,referenceCorners):
+    """
+    Returns an array with the arucos' points whose ID is present in sourceArucosIds 
+    by getting those points from referenceCorners. Used to get the points of the 
+    template associated to the detected arucos points.
+    :param sourceIDs: ids of the corners detected in the source image
+    :param referenceCorners: dictionary with the template's arucos ids as keys and the respective arucos
+    points as entries
+    """
+    destCorners=[]
+    for corner_id in sourceArucosIDs:
+        corner = referenceCorners[corner_id[0]]
+        for point in corner: 
+            destCorners.append(point)
+    return np.array(destCorners)
+
+def getReferenceCorners(referenceArucos):
+    """
+    Returns a dictionary with the template's arucos ids as keys and the respective arucos
+    points as entries. Used to get a reference of the arucos points in the template
+    that are used to obtain the homography
+    :param referenceArucos: Aruco markers' coordinates (in pixels) and ids
+    """
+    referenceCorners={}
+    numbArucos=len(referenceArucos["corners"])
+    for i in range(numbArucos):
+        referenceCorners[referenceArucos["ids"][i][0]] = [corner for corner 
+                                                          in referenceArucos["corners"][i][0]]
+    return referenceCorners
+
+def findHomography(sourcePoints, destPoints):
+    A=[]
+    for i in range(len(sourcePoints)):
+        x1=sourcePoints[i][0]
+        y1=sourcePoints[i][1]
+        x2=destPoints[i][0]
+        y2=destPoints[i][1]
+        line1=[x1,y1,1,0,0,0,-x1*x2,-y1*x2,-x2]
+        line2=[0,0,0,x1,y1,1,-x1*y2,-y1*y2,-y2]
+        A.append(line1)
+        A.append(line2)
+    u, s, vh = np.linalg.svd(A,full_matrices=True)#svd decomposition
+    h=vh[-1]
+    h=h.reshape((3,3))
+    return h
+
+parser = argparse.ArgumentParser()
+parser.add_argument('task', type = int, choices= [1,2,3,4],
+                    help="Task type")
+parser.add_argument('path_to_template', type=str, help="Path to template.")
+parser.add_argument('path_to_output_folder', type = str, help="Path to output folder")
+parser.add_argument('arg1', type = str, help= "if task = 1,2,3 , arg1 is the path to the image input folder. "+
+                    "if task=4,  arg1 is the path to images of camera 1 (all rgb images)")
+opt = parser.parse_args()
+
+task = opt.task
+input_images_path = opt.arg1#'./Dataset/FewArucos-Viewpoint2.mp4'
+template_path = opt.path_to_template#'Dataset/template2_fewArucos.png'
+output_path = opt.path_to_output_folder
+
+img_template = cv2.imread(template_path)
+
+referenceArucos = getArucos(img_template)
+referenceCorners=getReferenceCorners(referenceArucos)
+
+#Run with for example: 1 Dataset/template2_fewArucos.png Output_Images Input_Images_Small
+if task==1:
+    input_images = os.listdir(input_images_path)
+    for i in range(len(input_images)):
+        img_name = input_images[i]
+        frame = cv2.imread(input_images_path+"/"+img_name)
+        arucos=getArucos(frame)
+        if(len(arucos["ids"])>0):
+            corners=getSourceCorners(arucos)
+            destCorners= getDestCorners(arucos["ids"],referenceCorners)
+            H= findHomography(corners, destCorners)
+        rotated = cv2.warpPerspective(frame,H, (img_template.shape[1],img_template.shape[0]))
+        cv2.imwrite(output_path+"/"+img_name,rotated)
+
+#https://docs.opencv.org/3.4/d7/dff/tutorial_feature_homography.html
+#https://opencv24-python-tutorials.readthedocs.io/en/latest/py_tutorials/py_feature2d/py_feature_homography/py_feature_homography.html
+#http://amroamroamro.github.io/mexopencv/opencv/feature_homography_demo.html
+#Run with for example: 2 Dataset/template2_fewArucos.png Output_Images Input_Images
+elif task==2:
+    input_images = os.listdir(input_images_path)
+    for i in range(len(input_images)):
+        img_name = input_images[i]
+        frame = cv2.imread(input_images_path+"/"+img_name)
+        #H= findHomography(corners, destCorners)
+        #rotated = cv2.warpPerspective(frame,H, (img_template.shape[1],img_template.shape[0]))
+        #cv2.imwrite(output_path+"/"+img_name,rotated)
     
-                            | x' |     | x |
-    We solved the equation  | y' | = K | y | where [x' y' 1]' is the original image.
-                            | 1  |     | 1 |
-
-    """
-
-    fsx = K[0,0]
-    Cx  = K[0,2]
-    fsy = K[1,1]
-    Cy  = K[1,2]
-
-    image_size = [0,0]
-
-    if image_size == [0,0]:
-        image_size = image_original_size
-
-        a = np.arange(1,image_size[1])  #verfifier les dimensions
-        u = np.tile(a,(image_size[0],1))
-        u = np.reshape(u,-1) - Cx             #reshape a matrix into a vector
-
-        b = np.arange(1,image_size[0])
-        v = np.tile(b, (image_size[1],1))
-        v = np.reshape(v,-1) - Cy
         
-        print(len(u))
-        xyz = np.zeros[len(u),3]
-    
-    xyz[:,2] = np.double(image_vect)*0.001      # Convertion in meters
-    xyz[:,0] = (xyz[:,2]/fsx) * u
-    xyz[:,1] = (xyz[:,2]/fsy) * v
-
-    return(xyz)
-
-def get_rgbd(xyz,rgb,R,T,K_rgb):
-    """
-    """
-
-    fsx = K_rgb[0,0]
-    Cx  = K_rgb[0,2]
-    fsy = K_rgb[1,1]
-    Cy  = K_rgb[1,2] 
-
-    xyz_rgb = R*np.transpose(xyz)
-    xyz_rgb = xyz_rgb + T
-
-    x = xyz_rgb[0,:]
-    y = xyz_rgb[1,:]
-    z = xyz_rgb[2,:]
-
-    u = (fsx*x)/z + Cx
-    v = (fsy*y)/z + Cy
-
-    rgb_size = shape(rgb)
-    n_pixels = np.size(rgb[:,:,0])
-
-    v[v>rgb_size[0]] = 1
-    v[v<1] = 1
-    u[u > rgb_size[1]] = 1
-    u[u < 1] = 1
-
-    rgb_inds = plt.sub2ind(rgb_size, v, u)
-
-    rgbd = np.zeros[n_pixels,3]
-    rgb_aux = np.tile(rgb,(size(xyz),3))
-
-    c = np.arange(1,n_pixels)
-    rgbd[np.transpose(c),:] = rgb_aux[rgb_inds,:]
-
-    rgbd[xyz[:,1] == 0 & xyz[:,2]== 0 & xyz[:,3] == 3] = 0
-
-    #continuer cette fonction mais surtout la comprendre
-
-    return(np.tile(rgbd,rgb_size))
 
 
-def main ():
 
-    # Get xyz from image 1: 
-    size_image1 = shape(depth2_0['depth_array'])
-    size_image1 = np.array(size_image1)
-    image1 = np.reshape(depth2_0['depth_array'],-1)
-    K = calib_asus['Depth_cam'][0][0][0]
-    xyz_image1 = get_xyz_asus(image1, size_image1,K)
-
-    # Get the virtual image aligned wuth depth:
-    R_d_to__rgb = calib_asus['R_d_to_rgb']
-    T_d_to_rgb = calib_asus['T_d_to_rgb']
-    K_rgb = calib_asus['RGB_cam'][0][0][0]
-    rgbd = get_rgbd(xyz_image1, rgb2_0, R_d_to__rgb, T_d_to_rgb, K_rgb)
-
-    #Detect corresponding points:
-    kp1, des1 = orb.detectAndCompute(rgb2_0, None)
-    kp2, des2 = orb.detectAndCompute(rgb2_1, None)
-    # create BFMatcher object
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    # Match descriptors.
-    matches = bf.match(des1,des2)
-    # So
-    # rt them in the order of their distance.
-    matches = sorted(matches, key = lambda x:x.distance) 
-    # Draw first 10 matches.
-    img3 = cv2.drawMatches(rgb2_0,kp1,rgb2_1,kp2,matches[:10],None, flags=2)
-    plt.imshow(img3),plt.show()
-
-#print(calib_asus['Depth_cam'][0][0][0][0,0])
-main()

@@ -93,14 +93,9 @@ def findHomography(sourcePoints, destPoints):
     #h=h/h[2][2]#normalize matrix
     return h
 
-input_video_path = './Dataset/FewArucos-Viewpoint2.mp4'
-template_path = 'Dataset/template2_fewArucos.png'
+input_video_path = './Dataset/FewArucos-Viewpoint1.mp4'#'./Dataset/ManyArucos.mp4'#
+template_path = 'Dataset/template2_fewArucos.png'#'Dataset/template1_manyArucos.png'
 img_template = cv2.imread(template_path)
-
-rect_template = np.array([[[0,0],
-                          [img_template.shape[1],0],
-                          [img_template.shape[1],img_template.shape[0]],
-                           [0,img_template.shape[0]]]],dtype="float32")
 
 referenceArucos = getArucos(img_template)
 referenceCorners=getReferenceCorners(referenceArucos)

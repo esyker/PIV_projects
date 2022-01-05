@@ -91,9 +91,9 @@ def findHomography(sourcePoints, destPoints):
     u, s, vh = np.linalg.svd(A,full_matrices=True)#svd decomposition
     h=vh[-1]
     h=h.reshape((3,3))
-    #h=h/h[2][2]#normalize matrix
     return h
 
+#Run with for example: 1 Dataset/template2_fewArucos.png Output_Images Input_Images
 parser = argparse.ArgumentParser()
 parser.add_argument('task', type = int, choices= [1,2,3,4],
                     help="Task type")
@@ -110,15 +110,8 @@ output_path = opt.path_to_output_folder
 
 img_template = cv2.imread(template_path)
 
-rect_template = np.array([[[0,0],
-                          [img_template.shape[1],0],
-                          [img_template.shape[1],img_template.shape[0]],
-                           [0,img_template.shape[0]]]],dtype="float32")
-
 referenceArucos = getArucos(img_template)
 referenceCorners=getReferenceCorners(referenceArucos)
-
-max_numb_images =100
 
 if task==1:
     input_images = os.listdir(input_images_path)
@@ -130,10 +123,6 @@ if task==1:
             corners=getSourceCorners(arucos)
             destCorners= getDestCorners(arucos["ids"],referenceCorners)
             H= findHomography(corners, destCorners)
-            #H= findHomography(destCorners, corners)
-            #rect_frame = cv2.perspectiveTransform(rect_template, H,(frame.shape[1],frame.shape[0]))
-        #M= cv2.getPerspectiveTransform(rect_frame,rect_template)
-        #rotated = cv2.warpPerspective(frame,M, (img_template.shape[1],img_template.shape[0]))
         rotated = cv2.warpPerspective(frame,H, (img_template.shape[1],img_template.shape[0]))
         cv2.imwrite(output_path+"/"+img_name,rotated)
         
