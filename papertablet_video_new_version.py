@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
-import os
-import argparse
+import time
 
 def initArucoPos(template, aruco_dict, arucoParameters):
     """
@@ -94,20 +93,8 @@ def findHomography(sourcePoints, destPoints):
     #h=h/h[2][2]#normalize matrix
     return h
 
-parser = argparse.ArgumentParser()
-parser.add_argument('task', type = int, choices= [1,2,3,4],
-                    help="Task type")
-parser.add_argument('path_to_template', type=str, help="Path to template.")
-parser.add_argument('path_to_output_folder', type = str, help="Path to output folder")
-parser.add_argument('arg1', type = str, help= "if task = 1,2,3 , arg1 is the path to the image input folder. "+
-                    "if task=4,  arg1 is the path to images of camera 1 (all rgb images)")
-opt = parser.parse_args()
-
-task = opt.task
-input_images_path = opt.arg1#'./Dataset/FewArucos-Viewpoint2.mp4'
-template_path = opt.path_to_template#'Dataset/template2_fewArucos.png'
-output_path = opt.path_to_output_folder
-
+input_video_path = './Dataset/FewArucos-Viewpoint2.mp4'
+template_path = 'Dataset/template2_fewArucos.png'
 img_template = cv2.imread(template_path)
 
 rect_template = np.array([[[0,0],
@@ -118,25 +105,33 @@ rect_template = np.array([[[0,0],
 referenceArucos = getArucos(img_template)
 referenceCorners=getReferenceCorners(referenceArucos)
 
-max_numb_images =100
+#Show video
+cap = cv2.VideoCapture(input_video_path)
+start_time = time.time()
 
-if task==1:
-    input_images = os.listdir(input_images_path)
-    for i in range(len(input_images)):
-        img_name = input_images[i]
-        frame = cv2.imread(input_images_path+"/"+img_name)
+while(cap.isOpened()):
+    ret, frame = cap.read()
+    if ret:
         arucos=getArucos(frame)
         if(len(arucos["ids"])>0):
             corners=getSourceCorners(arucos)
             destCorners= getDestCorners(arucos["ids"],referenceCorners)
-            H= findHomography(corners, destCorners)
-            #H= findHomography(destCorners, corners)
-            #rect_frame = cv2.perspectiveTransform(rect_template, H,(frame.shape[1],frame.shape[0]))
-        #M= cv2.getPerspectiveTransform(rect_frame,rect_template)
-        #rotated = cv2.warpPerspective(frame,M, (img_template.shape[1],img_template.shape[0]))
+            H= findHomography(corners,destCorners)
         rotated = cv2.warpPerspective(frame,H, (img_template.shape[1],img_template.shape[0]))
-        cv2.imwrite(output_path+"/"+img_name,rotated)
+        #resize
+        frame = cv2.resize(frame,None,fx=0.2,fy=0.2)
+        rotated = cv2.resize(rotated,None,fx=0.2,fy=0.2)
+        cv2.imshow("original",frame)
+        cv2.imshow("homography",rotated)
         
+        k=cv2.waitKey(1) & 0xff
+        #once enter key is pressed video will stop
+        if k==27:
+            break
+    else:
+        break
 
+print("--- %s seconds ---" % (time.time() - start_time))
 
-
+cap.release()
+cv2.destroyAllWindows()
