@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 import time
-import argparse
 
 def initArucoPos(template, aruco_dict, arucoParameters):
     """
@@ -93,13 +92,6 @@ def findHomography(sourcePoints, destPoints):
     h=h.reshape((3,3))
     #h=h/h[2][2]#normalize matrix
     return h
-
-parser = argparse.ArgumentParser()
-parser.add_argument('task', type = int, choices= [1,2,3,4],
-                    help="Task type")
-parser.add_argument('path_to_template', type=str, help="Path to template.")
-parser.add_argument('path_to_output_folder', type = str, help="Path to output folder")
-opt = parser.parse_args()
 
 input_video_path = './Dataset/FewArucos-Viewpoint2.mp4'
 template_path = 'Dataset/template2_fewArucos.png'
