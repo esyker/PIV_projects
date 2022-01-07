@@ -1,133 +1,98 @@
 import cv2
 import numpy as np
 from numpy.core.fromnumeric import shape, size
-from numpy.lib.shape_base import expand_dims, tile
-from getCorners import run 
-from getCorners import getArucos
-import scipy.io
-import time
+from numpy import reshape
 import matplotlib.pyplot as plt
-orb = cv2.ORB_create()
 
-calib_asus = scipy.io.loadmat('Dataset/calib_asus.mat')
-depth2_0 = scipy.io.loadmat('Dataset/imgs2depth/depth2cams_0000.mat')
-depth2_1 = scipy.io.loadmat('Dataset/imgs2depth/depth2cams_0001.mat')
-rgb2_0 = cv2.imread('Dataset/imgs2depth/rgb2cams_0000.jpg',cv2.COLOR_BGR2GRAY)
-rgb2_1 = cv2.imread('Dataset/imgs2depth/rgb2cams_0001.jpg',cv2.COLOR_BGR2GRAY)
+# Path of the image and the template:
+query_image_path = ('Input_Image/frame17.png')              # image to compute
+train_image_path = ('Dataset/template2_fewArucos.png')      #template
 
-def get_xyz_asus (image_vect, image_original_size, K):
+# Import the images : 
+image_1 = cv2.imread(query_image_path, cv2.COLOR_BGR2GRAY)
+image_2 = cv2.imread(train_image_path, cv2.COLOR_BGR2GRAY)
+
+def compute_SIFT(image_1, image_2):
     """
-    Return the xyz coordinates
-    input :
-    output :
-        | fsx   0   Cx |   | Kx  0   Cx |
-    K = |  0   fsy  Cy | = | 0   Ky  Cy | 
-        |  0    0   1  |   | 0   0   1  |
+    Change the point of view of a image, the goal is to have the same one from the template
+    Use of the OpenCV library. 
+    Input : image_1 : image to compute 	: type numpy array
+            image_2 : the template 	: type numpy array
+    Outout : None
+    """
 
+    # Minimun number of good matches
+    MIN_MATCH_COUNT = 7
+
+    # Compute the detector with the feature SIFT
+    detector = cv2.xfeatures2d.SIFT_create()
+
+    # Find the keys and the descriptors with SIFT
+    key_1, des_1 = detector.detectAndCompute(image_1, None)
+    key_2, des_2 = detector.detectAndCompute(image_2, None)
+
+    FLANN_INDEX_KDTREE = 0
+    index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+    search_parameters = dict(checks = 70)
+
+    flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
+
+    # Find all the matches
+    matches = flann.knnMatch(des_1, des_2, k = 2)
     
-                            | x' |     | x |
-    We solved the equation  | y' | = K | y | where [x' y' 1]' is the original image.
-                            | 1  |     | 1 |
+    # Take all the good matches
+    good_matches = []
+    for m,n in matches:
+        if m.distance < 0.82*n.distance:
+            good_matches.append(m)
+    
+    # To compute the function, we need a minimum of efficient matches
+    if len(good_matches) > MIN_MATCH_COUNT:
+        # Get the point from the match of the image and the template
+        src_points = np.float32([key_1[m.queryIdx].pt for m in good_matches]).reshape(-1,1,2)
+        dst_points = np.float32([key_2[m.trainIdx].pt for m in good_matches]).reshape(-1,1,2)
+    
+        # COmpute the homography with the Ransac method
+        H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)
+        matchesMask = mask.ravel().tolist()
 
-    """
+        # Get the points to compute bring back straight the image 
+        h = image_1.shape[0]
+        w = image_1.shape[1]
+        pts = np.float32([ [0,0],[0,h-1],[w-1,h-1],[w-1,0 ] ]).reshape(-1,1,2)
 
-    fsx = K[0,0]
-    Cx  = K[0,2]
-    fsy = K[1,1]
-    Cy  = K[1,2]
+        # Applying the perspectiveTransform() function to transform the perspective of 
+        # the given source image to the corresponding points in the destination image
+        result_matrix = cv2.perspectiveTransform(pts,H)
 
-    image_size = [0,0]
-
-    if image_size == [0,0]:
-        image_size = image_original_size
-
-        a = np.arange(1,image_size[1])  #verfifier les dimensions
-        u = np.tile(a,(image_size[0],1))
-        u = np.reshape(u,-1) - Cx             #reshape a matrix into a vector
-
-        b = np.arange(1,image_size[0])
-        v = np.tile(b, (image_size[1],1))
-        v = np.reshape(v,-1) - Cy
+        # Use this function to plot the line around the interesting object
+        image_2 = cv2.polylines(image_2, [np.int32(result_matrix)], True,255,3, cv2.LINE_AA)
         
-        print(len(u))
-        xyz = np.zeros[len(u),3]
-    
-    xyz[:,2] = np.double(image_vect)*0.001      # Convertion in meters
-    xyz[:,0] = (xyz[:,2]/fsx) * u
-    xyz[:,1] = (xyz[:,2]/fsy) * v
+        # Configure the parameters 
+        draw_params = dict(matchColor = (0,255,0),          # draw matches in green color
+                            singlePointColor = None,
+                            matchesMask = matchesMask,      # draw only inliers
+                            flags = 2)
 
-    return(xyz)
+        # Draw the line between the matches of the 2 images and plot the result
+        image_3 = cv2.drawMatches(image_1, key_1, image_2, key_2, good_matches, None, **draw_params) 
+        plt.imshow(image_3, 'gray'), plt.show()
 
-def get_rgbd(xyz,rgb,R,T,K_rgb):
-    """
-    """
+        # Compute the perspective changing with warpPerspective()
+        rotated = cv2.warpPerspective(image_1, H, (image_2.shape[1], image_2.shape[0]))
+        frame = cv2.resize(image_1, None, fx = 0.2, fy = 0.2)
+        rotated = cv2.resize(rotated, None, fx = 0.2, fy = 0.2)
 
-    fsx = K_rgb[0,0]
-    Cx  = K_rgb[0,2]
-    fsy = K_rgb[1,1]
-    Cy  = K_rgb[1,2] 
+        # Plot the orginal image and after the homography
+        cv2.imshow("origin", frame)
+        cv2.imshow("homography", rotated)
+        cv2.waitKey(0)
 
-    xyz_rgb = R*np.transpose(xyz)
-    xyz_rgb = xyz_rgb + T
-
-    x = xyz_rgb[0,:]
-    y = xyz_rgb[1,:]
-    z = xyz_rgb[2,:]
-
-    u = (fsx*x)/z + Cx
-    v = (fsy*y)/z + Cy
-
-    rgb_size = shape(rgb)
-    n_pixels = np.size(rgb[:,:,0])
-
-    v[v>rgb_size[0]] = 1
-    v[v<1] = 1
-    u[u > rgb_size[1]] = 1
-    u[u < 1] = 1
-
-    rgb_inds = plt.sub2ind(rgb_size, v, u)
-
-    rgbd = np.zeros[n_pixels,3]
-    rgb_aux = np.tile(rgb,(size(xyz),3))
-
-    c = np.arange(1,n_pixels)
-    rgbd[np.transpose(c),:] = rgb_aux[rgb_inds,:]
-
-    rgbd[xyz[:,1] == 0 & xyz[:,2]== 0 & xyz[:,3] == 3] = 0
-
-    #continuer cette fonction mais surtout la comprendre
-
-    return(np.tile(rgbd,rgb_size))
+    # If the numeber of good matches is not good enough, do not compute the homography
+    # Print an error message
+    else :
+        print('not enough good matches')
+        matchesMask = None
 
 
-def main ():
-
-    # Get xyz from image 1: 
-    size_image1 = shape(depth2_0['depth_array'])
-    size_image1 = np.array(size_image1)
-    image1 = np.reshape(depth2_0['depth_array'],-1)
-    K = calib_asus['Depth_cam'][0][0][0]
-    xyz_image1 = get_xyz_asus(image1, size_image1,K)
-
-    # Get the virtual image aligned wuth depth:
-    R_d_to__rgb = calib_asus['R_d_to_rgb']
-    T_d_to_rgb = calib_asus['T_d_to_rgb']
-    K_rgb = calib_asus['RGB_cam'][0][0][0]
-    rgbd = get_rgbd(xyz_image1, rgb2_0, R_d_to__rgb, T_d_to_rgb, K_rgb)
-
-    #Detect corresponding points:
-    kp1, des1 = orb.detectAndCompute(rgb2_0, None)
-    kp2, des2 = orb.detectAndCompute(rgb2_1, None)
-    # create BFMatcher object
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    # Match descriptors.
-    matches = bf.match(des1,des2)
-    # So
-    # rt them in the order of their distance.
-    matches = sorted(matches, key = lambda x:x.distance) 
-    # Draw first 10 matches.
-    img3 = cv2.drawMatches(rgb2_0,kp1,rgb2_1,kp2,matches[:10],None, flags=2)
-    plt.imshow(img3),plt.show()
-
-#print(calib_asus['Depth_cam'][0][0][0][0,0])
-main()
+compute_SIFT(image_1, image_2)
