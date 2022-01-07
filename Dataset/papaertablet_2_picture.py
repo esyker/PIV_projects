@@ -44,7 +44,7 @@ matches = flann.knnMatch(des1,des2,k=2)
 
 good = []
 for m,n in matches:
-    if m.distance < 0.82*n.distance:
+    if m.distance < 0.825*n.distance:
         good.append(m)
 
 src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
