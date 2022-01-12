@@ -3,6 +3,12 @@ import numpy as np
 import os
 import argparse
 
+""""
+***********************
+Functions used for Task1
+************************
+"""
+
 def initArucoPos(template, aruco_dict, arucoParameters):
     """
     Returns the corners of the Aruco markers in the template image. Note that the corners sequence is the same as
@@ -93,7 +99,41 @@ def findHomography(sourcePoints, destPoints):
     h=h.reshape((3,3))
     return h
 
-#Run with for example: 1 Dataset/template2_fewArucos.png Output_Images Input_Images_Small
+""""
+***********************
+Functions used for Task2
+************************
+"""
+
+def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUNT=7, ratio_tresh=0.82):
+    """
+    Change the point of view of a image, the goal is to have the same one from the template
+    Use of the OpenCV library. 
+    Input : image_1 : image to compute 	: type numpy array
+            image_2 : the template 	: type numpy array
+            MIN_MATCH_COUNT: Minimun number of good matches : type int
+            des_2 : SIFT descriptors of the template : np.array
+            key_2 : SIFT keys of the template : np.array
+    """
+    # Find the keys and the descriptors with SIFT
+    key_1, des_1 = detector.detectAndCompute(image_1, None)
+    # Find all the matches
+    matches = flann.knnMatch(des_1, des_2, k = 2)
+    # Take all the good matches
+    good_matches = []
+    #Filter matches using the Lowe's ratio test
+    for m,n in matches:
+        if m.distance < ratio_tresh*n.distance:
+            good_matches.append(m)
+    # To compute the function, we need a minimum of efficient matches
+    if len(good_matches) > MIN_MATCH_COUNT:
+        # Get the point from the match of the image and the template
+        src_points = np.float32([key_1[m.queryIdx].pt for m in good_matches]).reshape(-1,1,2)
+        dst_points = np.float32([key_2[m.trainIdx].pt for m in good_matches]).reshape(-1,1,2)
+        return src_points, dst_points
+    else:#Not enough good matches
+        return [], []
+
 parser = argparse.ArgumentParser()
 parser.add_argument('task', type = int, choices= [1,2,3,4],
                     help="Task type")
@@ -108,12 +148,11 @@ input_images_path = opt.arg1#'./Dataset/FewArucos-Viewpoint2.mp4'
 template_path = opt.path_to_template#'Dataset/template2_fewArucos.png'
 output_path = opt.path_to_output_folder
 
-img_template = cv2.imread(template_path)
-
-referenceArucos = getArucos(img_template)
-referenceCorners=getReferenceCorners(referenceArucos)
-
+#Run with for example: 1 Dataset/template2_fewArucos.png Output_Images Input_Images_Small
 if task==1:
+    img_template = cv2.imread(template_path)
+    referenceArucos = getArucos(img_template)
+    referenceCorners=getReferenceCorners(referenceArucos)
     input_images = os.listdir(input_images_path)
     for i in range(len(input_images)):
         img_name = input_images[i]
@@ -125,6 +164,36 @@ if task==1:
             H= findHomography(corners, destCorners)
         rotated = cv2.warpPerspective(frame,H, (img_template.shape[1],img_template.shape[0]))
         cv2.imwrite(output_path+"/"+img_name,rotated)
+
+#Run with for example: 2 Dataset/template2_fewArucos.png Output_Images Input_Images_Small
+elif task==2:
+    img_template = cv2.imread(template_path)
+    input_images = os.listdir(input_images_path)
+    #SIFT Detector
+    detector = cv2.xfeatures2d.SIFT_create()# SIFT detector
+    key_template, des_template = detector.detectAndCompute(img_template, None)
+    #FLANN Matcher
+    FLANN_INDEX_KDTREE = 0
+    index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+    search_parameters = dict(checks = 70)
+    flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
+    for i in range(len(input_images)):
+        print(i)
+        img_name = input_images[i]
+        frame = cv2.imread(input_images_path+"/"+img_name, cv2.COLOR_BGR2GRAY)
+        #Find dst_points and src_points using SIFT
+        src_points, dst_points = compute_SIFT(frame, img_template, des_template, key_template, 
+                                                      detector, flann)
+        if(len(dst_points)>8):
+            # If the numeber of good matches is good enough, compute the homography
+            # Compute the homography with the Ransac method
+            H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)
+            rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], img_template.shape[0]))
+            cv2.imwrite(output_path+"/"+img_name,rotated)
+        else :
+            # If the numeber of good matches is not good enough, do not compute the homography
+            # Print an error message
+            print('not enough good matches')
         
 
 

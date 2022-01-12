@@ -4,7 +4,7 @@ import time
 import matplotlib.pyplot as plt
 
 
-input_video_path = './Dataset/FewArucos-Viewpoint2.mp4'#'./Dataset/ManyArucos.mp4'#
+input_video_path = './Dataset/FewArucos-Viewpoint1.mp4'#'./Dataset/ManyArucos.mp4'#
 template_path = 'Dataset/template2_fewArucos.png'#'Dataset/template1_manyArucos.png'
 
 
