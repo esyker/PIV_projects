@@ -22,7 +22,7 @@ def findHomography(sourcePoints, destPoints):
     return h
 
 
-img1 = cv2.imread('./Input_Images/frame3.png',0)          # queryImage
+img1 = cv2.imread('./Input_Images/frame1062.png',0)          # queryImage
 img2 = cv2.imread('Dataset/template2_fewArucos.png',0) # trainImage
 
 sift = cv2.xfeatures2d.SIFT_create()
@@ -34,7 +34,7 @@ kp2, des2 = sift.detectAndCompute(img2,None)
 
 FLANN_INDEX_KDTREE = 0
 index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
-search_params = dict(checks = 50)
+search_params = dict(checks = 70)
 
 flann = cv2.FlannBasedMatcher(index_params, search_params)
 
@@ -44,13 +44,13 @@ matches = flann.knnMatch(des1,des2,k=2)
 
 good = []
 for m,n in matches:
-    if m.distance < 0.825*n.distance:
+    if m.distance < 0.82*n.distance:
         good.append(m)
 
 src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
 dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
 
-M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,40.0, maxIters=30000)
 matchesMask = mask.ravel().tolist()
 
 

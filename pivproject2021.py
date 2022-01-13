@@ -187,7 +187,7 @@ elif task==2:
         if(len(dst_points)>8):
             # If the numeber of good matches is good enough, compute the homography
             # Compute the homography with the Ransac method
-            H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)
+            H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 40)
             rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], img_template.shape[0]))
             cv2.imwrite(output_path+"/"+img_name,rotated)
         else :
