@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import os
 import argparse
+import re
 
 """"
 ***********************
@@ -125,14 +126,15 @@ def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUN
     for m,n in matches:
         if m.distance < ratio_tresh*n.distance:
             good_matches.append(m)
+    print("GM:",len(good_matches))
     # To compute the function, we need a minimum of efficient matches
     if len(good_matches) > MIN_MATCH_COUNT:
         # Get the point from the match of the image and the template
         src_points = np.float32([key_1[m.queryIdx].pt for m in good_matches]).reshape(-1,1,2)
         dst_points = np.float32([key_2[m.trainIdx].pt for m in good_matches]).reshape(-1,1,2)
-        return src_points, dst_points
+        return src_points, dst_points, len(good_matches)
     else:#Not enough good matches
-        return [], []
+        return [], [], 0
 
 parser = argparse.ArgumentParser()
 parser.add_argument('task', type = int, choices= [1,2,3,4],
@@ -168,7 +170,7 @@ if task==1:
 #Run with for example: 2 Dataset/template2_fewArucos.png Output_Images Input_Images_Small
 elif task==2:
     img_template = cv2.imread(template_path)
-    input_images = os.listdir(input_images_path)
+    input_images = sorted(os.listdir(input_images_path), key=lambda f: int(re.sub('\D', '', f)))
     #SIFT Detector
     detector = cv2.xfeatures2d.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
@@ -177,21 +179,37 @@ elif task==2:
     index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
+    max_good_matches = 0
+    best_homography_matrix = None
     for i in range(len(input_images)):
         img_name = input_images[i]
+        #if(i==0):
+        #    img_name='frame1.png'
+        #else:
+        #    img_name = 'frame123.png'
         frame = cv2.imread(input_images_path+"/"+img_name, cv2.COLOR_BGR2GRAY)
         #Find dst_points and src_points using SIFT
-        src_points, dst_points = compute_SIFT(frame, img_template, des_template, key_template, 
+        print("Image",i)
+        src_points, dst_points,good_matches = compute_SIFT(frame, img_template, des_template, key_template, 
                                                       detector, flann)
-        if(len(dst_points)>0):
-            # If the numeber of good matches is good enough, compute the homography
-            # Compute the homography with the Ransac method
+        if(good_matches>=0.7*max_good_matches):
             H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 40, maxIters=3000)
             rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], img_template.shape[0]))
-            cv2.imwrite(output_path+"/"+img_name,rotated)
-        else :
-            # If the numeber of good matches is not good enough, do not compute the homography
-            # Print an error message
-            print('not enough good matches')
+            best_homography_matrix=H
+            max_good_matches=good_matches
+        else:
+            pre_rotated = cv2.warpPerspective(frame, best_homography_matrix, 
+                                              (img_template.shape[1], img_template.shape[0]))
+            #cv2.imshow('pre_rotated',pre_rotated)
+            src_points, dst_points,good_matches = compute_SIFT(pre_rotated, img_template, des_template, key_template, 
+                                                          detector, flann)
+            H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 40, maxIters=3000)
+            rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], img_template.shape[0]))         
+        cv2.imwrite(output_path+"/"+img_name,rotated)
+        #if(i==1):
+        #    break
+
+        
+
 
 
