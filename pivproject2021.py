@@ -105,7 +105,7 @@ Functions used for Task2
 ************************
 """
 
-def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUNT=7, ratio_tresh=0.82):
+def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUNT=7, ratio_tresh=0.7):
     """
     Change the point of view of a image, the goal is to have the same one from the template
     Use of the OpenCV library. 
@@ -132,7 +132,7 @@ def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUN
         dst_points = np.float32([key_2[m.trainIdx].pt for m in good_matches]).reshape(-1,1,2)
         return src_points, dst_points
     else:#Not enough good matches
-        return [], []
+        return np.array([]), np.array([])
 
 parser = argparse.ArgumentParser()
 parser.add_argument('task', type = int, choices= [1,2,3,4],
@@ -166,6 +166,10 @@ if task==1:
         cv2.imwrite(output_path+"/"+img_name,rotated)
 
 #Run with for example: 2 Dataset/template2_fewArucos.png Output_Images Input_Images_Small
+#Run with for example: 2 Dataset/formsns/templateSNS.jpg Output_Images Dataset/formsns/receitaSNS
+#Run with for example: 2 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/glass
+#Run with for example: 2 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus
+#Run with for example: 2 Dataset/Gehry/Template_Gehry.jpg Output_Images Dataset/Gehry/images
 elif task==2:
     img_template = cv2.imread(template_path)
     input_images = os.listdir(input_images_path)
@@ -178,17 +182,24 @@ elif task==2:
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
     for i in range(len(input_images)):
+        print(i)
         img_name = input_images[i]
+        print(img_name)
         frame = cv2.imread(input_images_path+"/"+img_name, cv2.COLOR_BGR2GRAY)
         #Find dst_points and src_points using SIFT
         src_points, dst_points = compute_SIFT(frame, img_template, des_template, key_template, 
                                                       detector, flann)
+        print("src: ",src_points.shape," ",src_points.dtype)
+        print("dst: ",dst_points.shape," ",dst_points.dtype)
         if(len(dst_points)>0):
             # If the numeber of good matches is good enough, compute the homography
             # Compute the homography with the Ransac method
-            H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 40, maxIters=3000)
-            rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], img_template.shape[0]))
-            cv2.imwrite(output_path+"/"+img_name,rotated)
+            H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5, maxIters=3000)
+            if(H is not None):
+                rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], img_template.shape[0]))
+                cv2.imwrite(output_path+"/"+img_name,rotated)
+            else:
+                print('Could not find homography matrix')
         else :
             # If the numeber of good matches is not good enough, do not compute the homography
             # Print an error message
