@@ -1,7 +1,9 @@
 import cv2
 import numpy as np
-import sys
+import scipy.io
+import matplotlib.pyplot as plt
 import os
+import argparse
 
 """"
 ***********************
@@ -139,121 +141,96 @@ def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUN
 Functions used for Task4
 ************************
 """
-def compute_SIFT_img(image_1, image_2, detector, flann, MIN_MATCH_COUNT=7, ratio_tresh=0.7):
+def get_rgbd(xyz, rgb, R, T, K_rgb):
     """
-    Change the point of view of a image, the goal is to have the same one from the template
-    Use of the OpenCV library. 
-    Input : image_1 : image to compute 	: type numpy array
-            image_2 : the template 	: type numpy array
-            MIN_MATCH_COUNT: Minimun number of good matches : type int
-            des_2 : SIFT descriptors of the template : np.array
-            key_2 : SIFT keys of the template : np.array
     """
-    # Find the keys and the descriptors with SIFT
-    key_1, des_1 = detector.detectAndCompute(image_1, None)
-    key_2, des_2 =detector.detectAndCompute(image_2, None)
-    # Find all the matches
-    matches = flann.knnMatch(des_1, des_2, k = 2)
-    # Take all the good matches
-    good_matches = []
-    #Filter matches using the Lowe's ratio test
-    for m,n in matches:
-        if m.distance < ratio_tresh*n.distance:
-            good_matches.append(m)
-    # To compute the function, we need a minimum of efficient matches
-    if len(good_matches) > MIN_MATCH_COUNT:
-        # Get the point from the match of the image and the template
-        src_points = np.float32([key_1[m.queryIdx].pt for m in good_matches]).reshape(-1,1,2)
-        dst_points = np.float32([key_2[m.trainIdx].pt for m in good_matches]).reshape(-1,1,2)
-        return src_points, dst_points
-    else:#Not enough good matches
-        return np.array([]), np.array([])
+    Kx = K_rgb[0,0]
+    Cx = K_rgb[0,2]
+    Ky = K_rgb[1,1]
+    Cy = K_rgb[1,2]
 
-def calculate_depth_map(img1_undistorted,img2_undistorted):
-    # ------------------------------------------------------------
-    # CALCULATE DISPARITY (DEPTH MAP)
-    # Adapted from: https://github.com/opencv/opencv/blob/master/samples/python/stereo_match.py
-    # and: https://docs.opencv.org/master/dd/d53/tutorial_py_depthmap.html
-    
-    # StereoSGBM Parameter explanations:
-    # https://docs.opencv.org/4.5.0/d2/d85/classcv_1_1StereoSGBM.html
-    
-    # Matched block size. It must be an odd number >=1 . Normally, it should be somewhere in the 3..11 range.
-    block_size = 11
-    min_disp = -128
-    max_disp = 128
-    # Maximum disparity minus minimum disparity. The value is always greater than zero.
-    # In the current implementation, this parameter must be divisible by 16.
-    num_disp = max_disp - min_disp
-    # Margin in percentage by which the best (minimum) computed cost function value should "win" the second best value to consider the found match correct.
-    # Normally, a value within the 5-15 range is good enough
-    uniquenessRatio = 5
-    # Maximum size of smooth disparity regions to consider their noise speckles and invalidate.
-    # Set it to 0 to disable speckle filtering. Otherwise, set it somewhere in the 50-200 range.
-    speckleWindowSize = 200
-    # Maximum disparity variation within each connected component.
-    # If you do speckle filtering, set the parameter to a positive value, it will be implicitly multiplied by 16.
-    # Normally, 1 or 2 is good enough.
-    speckleRange = 2
-    disp12MaxDiff = 0
-    
-    stereo = cv2.StereoSGBM_create(
-        minDisparity=min_disp,
-        numDisparities=num_disp,
-        blockSize=block_size,
-        uniquenessRatio=uniquenessRatio,
-        speckleWindowSize=speckleWindowSize,
-        speckleRange=speckleRange,
-        disp12MaxDiff=disp12MaxDiff,
-        P1=8 * 1 * block_size * block_size,
-        P2=32 * 1 * block_size * block_size,
-    )
-    disparity_SGBM = stereo.compute(img1_undistorted, img2_undistorted)
-    
-    # Normalize the values to a range from 0..255 for a grayscale image
-    disparity_SGBM = cv2.normalize(disparity_SGBM, disparity_SGBM, alpha=255,
-                                  beta=0, norm_type=cv2.NORM_MINMAX)
-    disparity_SGBM = np.uint8(disparity_SGBM)
-    cv2.imshow("Disparity", disparity_SGBM)
-    #cv2.imwrite("disparity_SGBM_norm.png", disparity_SGBM)
-    
-def find_depth(circle_right, circle_left, frame_right, frame_left, baseline,f, alpha):
+    xyz_rgb = np.dot(R,np.transpose(xyz))
+    xyz_rgb = np.array([xyz_rgb[0,:] + T[0], xyz_rgb[1,:] + T[1], xyz_rgb[2,:] + T[2]])
 
-    # CONVERT FOCAL LENGTH f FROM [mm] TO [pixel]:
-    height_right, width_right, depth_right = frame_right.shape
-    height_left, width_left, depth_left = frame_left.shape
+    x = xyz_rgb[0,:]
+    y = xyz_rgb[1,:]
+    z = xyz_rgb[2,:]
 
-    if width_right == width_left:
-        f_pixel = (width_right * 0.5) / np.tan(alpha * 0.5 * np.pi/180)
+    u = np.round(Kx * x/z + Cx)
+    v = np.round(Ky * y/z + Cy)
 
-    else:
-        print('Left and right camera frames do not have the same pixel width')
+    rgb_size = np.shape(rgb)
+    n_pixels = np.size(rgb)
 
-    x_right = circle_right[0]
-    x_left = circle_left[0]
+    v[v > rgb_size[0]]= 1
+    v[v < 1] = 1
+    u[u > rgb_size[1]]= 1
+    u[u < 1] = 1
 
-    # CALCULATE THE DISPARITY:
-    disparity = x_left-x_right      #Displacement between left and right frames [pixels]
+    rgb_inds = sub2ind(rgb_size, v, u)
 
-    # CALCULATE DEPTH z:
-    zDepth = (baseline*f_pixel)/disparity             #Depth in [cm]
+    rgbd = np.zeros((n_pixels,3))
+    print(n_pixels)
+    rgb_aux = np.reshape(rgb,n_pixels, 3)
 
-    return abs(zDepth)
-    
+    rgbd[n_pixels,:] = rgb_aux[rgb_inds,:]
 
+    rgbd[xyz[:,0] == 0 & xyz[:,1] == 0 & xyz[:,2] == 0] = 0
+
+    rgbd = np.uint8(np.reshape(rgbd, rgb_size))
+
+    return(rgbd)
+
+def get_xyz(depth_im, K):
+    """
+    """
+    im_size = np.shape(depth_im)
+    im_vec = np.reshape(depth_im, -1)
+
+    Kx = K[0,0]
+    Cx = K[0,2]
+    Ky = K[1,1]
+    Cy = K[1,2]  
+
+    A = np.arange(1,im_size[1]+1)
+    u = np.tile(A, (im_size[0],1))  
+    u = np.reshape(u,-1) - Cx
+
+    B = np.transpose(np.arange(1,im_size[0]+1))
+    v = np.tile(B, (im_size[1],1))
+    v = np.reshape(v,-1) - Cy
+
+    xyz = np.zeros((len(u),3))
+    xyz[:,2] = np.double(im_vec)*0.001
+    xyz[:,0] = (xyz[:,2]/Kx) * u
+    xyz[:,1] = (xyz[:,2]/Ky) * v
+
+    return xyz
+
+def sub2ind(array_shape, rows, cols):
+    return rows*array_shape[1] + cols
 
 """
 ***********************
 Main
 ***********************
 """
-task = int(sys.argv[1])
-template_path = sys.argv[2]#path_to_template
-output_path = sys.argv[3]#path_to_output_folder
+parser = argparse.ArgumentParser()
+parser.add_argument('task', type = int, choices= [1,2,4],
+                    help="Task type")
+parser.add_argument('path_to_template', type=str, help="Path to template.")
+parser.add_argument('path_to_output_folder', type = str, help="Path to output folder")
+parser.add_argument('arg1', type = str, help= "if task = 1,2,3 , arg1 is the path to the image input folder. "+
+                    "if task=4,  arg1 is the path to images of camera 1 (all rgb images)")
+opt = parser.parse_args()
+
+task = opt.task
+input_images_path = opt.arg1#'./Dataset/FewArucos-Viewpoint2.mp4'
+template_path = opt.path_to_template#'Dataset/template2_fewArucos.png'
+output_path = opt.path_to_output_folder
 
 #Run with for example: 1 Dataset/template2_fewArucos.png Output_Images Input_Images_Small
 if task==1:
-    input_images_path = sys.argv[4]
     img_template = cv2.imread(template_path)
     referenceArucos = getArucos(img_template)
     referenceCorners=getReferenceCorners(referenceArucos)
@@ -275,9 +252,9 @@ if task==1:
 #Run with for example: 2 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus
 #Run with for example: 2 Dataset/Gehry/Template_Gehry.jpg Output_Images Dataset/Gehry/images
 elif task==2:
-    input_images_path = sys.argv[4]
     img_template = cv2.imread(template_path)
     input_images = os.listdir(input_images_path)
+    #SIFT Detector
     detector = cv2.xfeatures2d.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
     #FLANN Matcher
@@ -312,48 +289,65 @@ elif task==2:
             # Print an error message
             print('not enough good matches')
 
-#Run with for example: 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/phone Dataset/TwoCameras/ulisboa1/photo
 elif task == 4:
-    img_template = cv2.imread(template_path)
-    camera1_images_path = sys.argv[4]
-    camera2_images_path = sys.argv[5]
-    camera1_images = os.listdir(camera1_images_path)
-    camera2_images = os.listdir(camera2_images_path)
-    detector = cv2.xfeatures2d.SIFT_create()# SIFT detector
-    key_template, des_template = detector.detectAndCompute(img_template, None)
-    #FLANN Matcher
-    FLANN_INDEX_KDTREE = 0
-    index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
-    search_parameters = dict(checks = 70)
-    flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
-    #Calibrate the camera
-    for i in range(len(camera1_images)):
-        img1_name = img2_name = camera1_images[i]
-        img1= cv2.imread(camera1_images_path+"/"+img1_name)
-        img2 = cv2.imread(camera2_images_path+"/"+img2_name)
-        cv2.imshow('1',img1)
-        cv2.imshow('2',img2)
-        src_points, dst_points = compute_SIFT_img(img1, img2, detector, flann, MIN_MATCH_COUNT=7, ratio_tresh=0.7)
-        pts1 = np.int32(src_points)
-        pts2 = np.int32(dst_points)
-        fundamental_matrix, inliers = cv2.findFundamentalMat(pts1, pts2, cv2.FM_RANSAC)
-        # We select only inlier points
-        pts1 = pts1[inliers.ravel() == 1]
-        pts2 = pts2[inliers.ravel() == 1]
-        h1=img1.shape[0]
-        w1 = img1.shape[1]
-        h2=img2.shape[0]
-        w2 = img2.shape[1]
-        _, H1, H2 = cv2.stereoRectifyUncalibrated(
-            np.float32(pts1), np.float32(pts2), fundamental_matrix, imgSize=(w1, h1)
-        )
-        img1_rectified = cv2.warpPerspective(img1, H1, (w1, h1))
-        img2_rectified = cv2.warpPerspective(img2, H2, (w2, h2))
-        cv2.imshow('r1',img1_rectified)
-        cv2.imshow('r2',img2_rectified)
-        calculate_depth_map(img1_rectified,img2_rectified)
-        break
-    
+    # import camera calibration
+    calib_path = 'Dataset/calib_asus.mat'
+    calib_asus = scipy.io.loadmat(calib_path)
+
+    # Read the calibration file od the camera
+    Depth_cam = calib_asus['Depth_cam'][0][0][0]
+    RGB_cam = calib_asus['RGB_cam'][0][0][0]
+    R_d_to_rgb = calib_asus['R_d_to_rgb']
+    T_d_to_rgb = calib_asus['T_d_to_rgb']
+
+    # import rgb
+    rgb_path = ('Dataset/teste/rgb_0000.jpg')
+    rgb = plt.imread(rgb_path)
+
+    # Import all depth path
+    depth_vector = []
+    for i in range(17):
+        if i < 10:
+            depth_path = 'Dataset/teste/depth_000'
+        else:
+            depth_path = 'Dataset/teste/depth_00'
+        depth_data = scipy.io.loadmat(depth_path + str(i) + '.mat')
+        depth_vector.append(depth_data)
+
+    #  Import all depth path
+    rgb_vector = []
+    for i in range(17):
+        if i < 10:
+            rgb_path = 'Dataset/teste/rgb_000'
+        else:
+            rgb_path = 'Dataset/teste/rgb_00'
+        rgb_data = cv2.imread(rgb_path + str(i) + '.jpg')
+        rgb_vector.append(rgb_data)
+
+    nb_data = len(rgb_vector)
+
+    # for i in range(nb_data-1):
+    #     for j in range(i+1, nb_data):
+    #         depth1, depth2 = depth_vector[i]['depth_array'], depth_vector[j]['depth_array']
+    #         img1, img2 = rgb_vector[i], rgb_vector[j]
+
+    #         xyz1 = get_xyz(depth1, Depth_cam)
+    #         rgbd1 = get_rgbd(xyz1,depth1, R_d_to_rgb, T_d_to_rgb, RGB_cam)
+
+    #         xyz2 = get_xyz(depth2, Depth_cam)
+    #         rgbd2 = get_rgbd(xyz2,depth2, R_d_to_rgb, T_d_to_rgb, RGB_cam)
+
+    depth1, depth2 = depth_vector[0]['depth_array'], depth_vector[15]['depth_array']
+    img1, img2 = rgb_vector[0], rgb_vector[15]
+
+    xyz1 = get_xyz(depth1, Depth_cam)
+    rgbd1 = get_rgbd(xyz1,depth1, R_d_to_rgb, T_d_to_rgb, RGB_cam)
+
+    xyz2 = get_xyz(depth2, Depth_cam)
+    rgbd2 = get_rgbd(xyz2,depth2, R_d_to_rgb, T_d_to_rgb, RGB_cam)
+
+    plt.imshow(rgbd1, rgb_vector[0]), plt.show()
+    plt.imshow(rgbd2, rgb_vector[15]), plt.show()
     
 
 
