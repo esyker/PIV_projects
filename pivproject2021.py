@@ -214,4 +214,5 @@ elif task==2:
 
 #Run with for example: 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/phone Dataset/TwoCameras/ulisboa1/photo
 elif task == 4:
+    
     pass
