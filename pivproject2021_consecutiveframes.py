@@ -192,7 +192,7 @@ elif task==2:
         print("Image",i)
         src_points, dst_points,good_matches = compute_SIFT(frame, img_template, des_template, key_template, 
                                                       detector, flann)
-        if(good_matches>=0.7*max_good_matches):
+        if(good_matches>=0.6*max_good_matches):
             H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 40, maxIters=3000)
             rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], img_template.shape[0]))
             best_homography_matrix=H

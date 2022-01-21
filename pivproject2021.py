@@ -139,106 +139,6 @@ def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUN
 Functions used for Task4
 ************************
 """
-def compute_SIFT_img(image_1, image_2, detector, flann, MIN_MATCH_COUNT=7, ratio_tresh=0.7):
-    """
-    Change the point of view of a image, the goal is to have the same one from the template
-    Use of the OpenCV library. 
-    Input : image_1 : image to compute 	: type numpy array
-            image_2 : the template 	: type numpy array
-            MIN_MATCH_COUNT: Minimun number of good matches : type int
-            des_2 : SIFT descriptors of the template : np.array
-            key_2 : SIFT keys of the template : np.array
-    """
-    # Find the keys and the descriptors with SIFT
-    key_1, des_1 = detector.detectAndCompute(image_1, None)
-    key_2, des_2 =detector.detectAndCompute(image_2, None)
-    # Find all the matches
-    matches = flann.knnMatch(des_1, des_2, k = 2)
-    # Take all the good matches
-    good_matches = []
-    #Filter matches using the Lowe's ratio test
-    for m,n in matches:
-        if m.distance < ratio_tresh*n.distance:
-            good_matches.append(m)
-    # To compute the function, we need a minimum of efficient matches
-    if len(good_matches) > MIN_MATCH_COUNT:
-        # Get the point from the match of the image and the template
-        src_points = np.float32([key_1[m.queryIdx].pt for m in good_matches]).reshape(-1,1,2)
-        dst_points = np.float32([key_2[m.trainIdx].pt for m in good_matches]).reshape(-1,1,2)
-        return src_points, dst_points
-    else:#Not enough good matches
-        return np.array([]), np.array([])
-
-def calculate_depth_map(img1_undistorted,img2_undistorted):
-    # ------------------------------------------------------------
-    # CALCULATE DISPARITY (DEPTH MAP)
-    # Adapted from: https://github.com/opencv/opencv/blob/master/samples/python/stereo_match.py
-    # and: https://docs.opencv.org/master/dd/d53/tutorial_py_depthmap.html
-    
-    # StereoSGBM Parameter explanations:
-    # https://docs.opencv.org/4.5.0/d2/d85/classcv_1_1StereoSGBM.html
-    
-    # Matched block size. It must be an odd number >=1 . Normally, it should be somewhere in the 3..11 range.
-    block_size = 11
-    min_disp = -128
-    max_disp = 128
-    # Maximum disparity minus minimum disparity. The value is always greater than zero.
-    # In the current implementation, this parameter must be divisible by 16.
-    num_disp = max_disp - min_disp
-    # Margin in percentage by which the best (minimum) computed cost function value should "win" the second best value to consider the found match correct.
-    # Normally, a value within the 5-15 range is good enough
-    uniquenessRatio = 5
-    # Maximum size of smooth disparity regions to consider their noise speckles and invalidate.
-    # Set it to 0 to disable speckle filtering. Otherwise, set it somewhere in the 50-200 range.
-    speckleWindowSize = 200
-    # Maximum disparity variation within each connected component.
-    # If you do speckle filtering, set the parameter to a positive value, it will be implicitly multiplied by 16.
-    # Normally, 1 or 2 is good enough.
-    speckleRange = 2
-    disp12MaxDiff = 0
-    
-    stereo = cv2.StereoSGBM_create(
-        minDisparity=min_disp,
-        numDisparities=num_disp,
-        blockSize=block_size,
-        uniquenessRatio=uniquenessRatio,
-        speckleWindowSize=speckleWindowSize,
-        speckleRange=speckleRange,
-        disp12MaxDiff=disp12MaxDiff,
-        P1=8 * 1 * block_size * block_size,
-        P2=32 * 1 * block_size * block_size,
-    )
-    disparity_SGBM = stereo.compute(img1_undistorted, img2_undistorted)
-    
-    # Normalize the values to a range from 0..255 for a grayscale image
-    disparity_SGBM = cv2.normalize(disparity_SGBM, disparity_SGBM, alpha=255,
-                                  beta=0, norm_type=cv2.NORM_MINMAX)
-    disparity_SGBM = np.uint8(disparity_SGBM)
-    cv2.imshow("Disparity", disparity_SGBM)
-    #cv2.imwrite("disparity_SGBM_norm.png", disparity_SGBM)
-    
-def find_depth(circle_right, circle_left, frame_right, frame_left, baseline,f, alpha):
-
-    # CONVERT FOCAL LENGTH f FROM [mm] TO [pixel]:
-    height_right, width_right, depth_right = frame_right.shape
-    height_left, width_left, depth_left = frame_left.shape
-
-    if width_right == width_left:
-        f_pixel = (width_right * 0.5) / np.tan(alpha * 0.5 * np.pi/180)
-
-    else:
-        print('Left and right camera frames do not have the same pixel width')
-
-    x_right = circle_right[0]
-    x_left = circle_left[0]
-
-    # CALCULATE THE DISPARITY:
-    disparity = x_left-x_right      #Displacement between left and right frames [pixels]
-
-    # CALCULATE DEPTH z:
-    zDepth = (baseline*f_pixel)/disparity             #Depth in [cm]
-
-    return abs(zDepth)
     
 
 
@@ -291,17 +191,17 @@ elif task==2:
         img_name = input_images[i]
         print(img_name)
         frame = cv2.imread(input_images_path+"/"+img_name, cv2.COLOR_BGR2GRAY)
-        #frame_median = cv2.medianBlur(frame, 7) # Add median filter to image
-        frame_median = cv2.GaussianBlur(frame,(3,3),cv2.BORDER_DEFAULT)
+        #frame_filtered = cv2.medianBlur(frame, 7) # Add median filter to image
+        frame_filtered = cv2.GaussianBlur(frame,(3,3),cv2.BORDER_DEFAULT)
         #Find dst_points and src_points using SIFT
-        src_points, dst_points = compute_SIFT(frame_median, img_template, des_template, key_template, 
-                                                      detector, flann)
+        src_points, dst_points = compute_SIFT(frame_filtered, img_template, des_template, key_template, 
+                                                      detector, flann, ratio_tresh= 0.82)
         print("src: ",src_points.shape," ",src_points.dtype)
         print("dst: ",dst_points.shape," ",dst_points.dtype)
         if(len(dst_points)>0):
             # If the numeber of good matches is good enough, compute the homography
             # Compute the homography with the Ransac method
-            H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5, maxIters=3000)
+            H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 40, maxIters=3000)
             if(H is not None):
                 rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], img_template.shape[0]))
                 cv2.imwrite(output_path+"/"+img_name,rotated)
@@ -314,46 +214,4 @@ elif task==2:
 
 #Run with for example: 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/phone Dataset/TwoCameras/ulisboa1/photo
 elif task == 4:
-    img_template = cv2.imread(template_path)
-    camera1_images_path = sys.argv[4]
-    camera2_images_path = sys.argv[5]
-    camera1_images = os.listdir(camera1_images_path)
-    camera2_images = os.listdir(camera2_images_path)
-    detector = cv2.xfeatures2d.SIFT_create()# SIFT detector
-    key_template, des_template = detector.detectAndCompute(img_template, None)
-    #FLANN Matcher
-    FLANN_INDEX_KDTREE = 0
-    index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
-    search_parameters = dict(checks = 70)
-    flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
-    #Calibrate the camera
-    for i in range(len(camera1_images)):
-        img1_name = img2_name = camera1_images[i]
-        img1= cv2.imread(camera1_images_path+"/"+img1_name)
-        img2 = cv2.imread(camera2_images_path+"/"+img2_name)
-        cv2.imshow('1',img1)
-        cv2.imshow('2',img2)
-        src_points, dst_points = compute_SIFT_img(img1, img2, detector, flann, MIN_MATCH_COUNT=7, ratio_tresh=0.7)
-        pts1 = np.int32(src_points)
-        pts2 = np.int32(dst_points)
-        fundamental_matrix, inliers = cv2.findFundamentalMat(pts1, pts2, cv2.FM_RANSAC)
-        # We select only inlier points
-        pts1 = pts1[inliers.ravel() == 1]
-        pts2 = pts2[inliers.ravel() == 1]
-        h1=img1.shape[0]
-        w1 = img1.shape[1]
-        h2=img2.shape[0]
-        w2 = img2.shape[1]
-        _, H1, H2 = cv2.stereoRectifyUncalibrated(
-            np.float32(pts1), np.float32(pts2), fundamental_matrix, imgSize=(w1, h1)
-        )
-        img1_rectified = cv2.warpPerspective(img1, H1, (w1, h1))
-        img2_rectified = cv2.warpPerspective(img2, H2, (w2, h2))
-        cv2.imshow('r1',img1_rectified)
-        cv2.imshow('r2',img2_rectified)
-        calculate_depth_map(img1_rectified,img2_rectified)
-        break
-    
-    
-
-
+    pass
