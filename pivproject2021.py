@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import sys
 import os
-
+import math
 """"
 ***********************
 Functions used for Task1
@@ -139,7 +139,62 @@ def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUN
 Functions used for Task4
 ************************
 """
-    
+def remove_skin_hsv(frame):
+    min_HSV = np.array([0, 58, 30], dtype = "uint8")
+    max_HSV = np.array([33, 255, 255], dtype = "uint8")
+    imageHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    skinRegionHSV = cv2.inRange(imageHSV, min_HSV, max_HSV)
+    noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(skinRegionHSV))    
+    return noSkinHSV
+
+# Values are taken from: 'RGB-H-CbCr Skin Colour Model for Human Face Detection'
+# (R > 95) AND (G > 40) AND (B > 20) AND (max{R, G, B} − min{R, G, B} > 15) AND (|R − G| > 15) AND (R > G) AND (R > B)
+# (R > 220) AND (G > 210) AND (B > 170) AND (|R − G| ≤ 15) AND (R > B) AND (G > B)
+def bgr_skin(b, g, r):
+    """Rule for skin pixel segmentation based on the paper 'RGB-H-CbCr Skin Colour Model for Human Face Detection'"""
+    e1 = bool((r > 95) and (g > 40) and (b > 20) and ((max(r, max(g, b)) - min(r, min(g, b))) > 15) and (
+    abs(int(r) - int(g)) > 15) and (r > g) and (r > b))
+    e2 = bool((r > 220) and (g > 210) and (b > 170) and (abs(int(r) - int(g)) <= 15) and (r > b) and (g > b))
+    return e1 or e2
+
+# Skin detector based on the BGR color space
+def skin_rgb_mask(bgr_image):
+    """Skin segmentation based on the RGB color space"""
+    h = bgr_image.shape[0]
+    w = bgr_image.shape[1]
+    # We crete the result image with back background
+    res = np.zeros((h, w, 1), dtype="uint8")
+    # Only 'skin pixels' will be set to white (255) in the res image:
+    for y in range(0, h):
+        for x in range(0, w):
+            (b, g, r) = bgr_image[y, x]
+            if bgr_skin(b, g, r):
+                res[y, x] = 1
+    return res
+
+def remove_skin_rgb(bgr_image):
+    mask = skin_rgb_mask(bgr_image)
+    noSkinRGB = cv2.bitwise_and(bgr_image, bgr_image, mask = cv2.bitwise_not(mask))
+    return noSkinRGB
+
+
+def estimate_good_homography(numb_matches):
+    return
+
+"""
+def remove_skin2(frame):
+    min_HSV = np.array([0, 58, 30], dtype = "uint8")
+    max_HSV = np.array([33, 255, 255], dtype = "uint8")
+    imageHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    imageYCrCb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+    skinRegionHSV = cv2.inRange(imageHSV, min_HSV, max_HSV)
+    noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(skinRegionHSV))    
+    return noSkinHSV
+
+#def get_mask(rgbImage,hsvImage, ycrcbImage):
+#    for
+"""
+
 
 
 """
@@ -213,6 +268,48 @@ elif task==2:
             print('not enough good matches')
 
 #Run with for example: 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/phone Dataset/TwoCameras/ulisboa1/photo
+#Run with for example: 4 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus Dataset/GoogleGlass/glass
 elif task == 4:
-    
-    pass
+    img_template = cv2.imread(template_path)
+    camera1_images_path = sys.argv[4]
+    camera2_images_path = sys.argv[5]
+    camera1_images = os.listdir(camera1_images_path)
+    camera2_images = os.listdir(camera2_images_path)
+    detector = cv2.xfeatures2d.SIFT_create()# SIFT detector
+    key_template, des_template = detector.detectAndCompute(img_template, None)
+    #FLANN Matcher
+    FLANN_INDEX_KDTREE = 0
+    index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+    search_parameters = dict(checks = 70)
+    flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
+    for i in range(len(camera1_images)):
+        img1_name = img2_name = camera1_images[i]
+        img1= cv2.imread(camera1_images_path+"/"+img1_name)
+        img2 = cv2.imread(camera2_images_path+"/"+img2_name)
+        #cv2.imshow('orginal1',img1)
+        #cv2.imshow('original2',img2)
+        img1_noskin = remove_skin_hsv(img1)
+        img2_noskin = remove_skin_hsv(img2)
+        #img1_noskin = remove_skin_rgb(img1)
+        #img2_noskin = remove_skin_rgb(img2)
+        #cv2.imshow('noskin1',img1_noskin)
+        #cv2.imshow('noskin2',img2_noskin)
+        src_points1, dst_points1 = compute_SIFT(img1_noskin, img_template, des_template, key_template, 
+                                                      detector, flann, ratio_tresh= 0.82)
+        src_points2, dst_points2 = compute_SIFT(img2_noskin, img_template, des_template, key_template, 
+                                                      detector, flann, ratio_tresh= 0.82)
+        if(len(dst_points1)>0):# If the numeber of good matches is good enough
+            H1, mask1 = cv2.findHomography(src_points1, dst_points1, cv2.RANSAC, 40, maxIters=3000)
+            if(H1 is not None):
+                rotated1 = cv2.warpPerspective(img1_noskin, H1, (img_template.shape[1], img_template.shape[0]))
+                cv2.imwrite(output_path+"/"+"1"+img1_name,rotated1)
+        if(len(dst_points2)>0):
+            H2, mask2 = cv2.findHomography(src_points2, dst_points2, cv2.RANSAC, 40, maxIters=3000)
+            if(H2 is not None):
+                rotated2 = cv2.warpPerspective(img2_noskin, H2, (img_template.shape[1], img_template.shape[0]))
+                cv2.imwrite(output_path+"/"+"2"+img2_name,rotated2)
+            else:
+                print('Could not find homography matrix')
+        #blend the two images https://docs.opencv.org/4.x/d5/dc4/tutorial_adding_images.html
+        result = cv2.addWeighted(rotated1, 0.5, img_template, 0.5, 0)
+        cv2.imwrite(output_path+"/"+img2_name,result)

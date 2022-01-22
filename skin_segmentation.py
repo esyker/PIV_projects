@@ -1,9 +1,4 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Jan 21 23:22:08 2022
-
-@author: Utilizador
-"""
+#https://nalinc.github.io/blog/2018/skin-detection-python-opencv/
 
 import numpy as np
 import cv2
