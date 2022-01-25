@@ -221,7 +221,7 @@ def check_homography(H, img):
         return False
     h,w,d = img.shape
     pts = np.float32([[0,0],[0,h-1],[w-1,h-1],[w-1,0]]).reshape(-1,1,2)
-    dst = cv2.perspectiveTransform(pts.reshape(-1,1,2), H)
+    dst = cv2.perspectiveTransform(pts, H)
     [[x1, y1]], [[x2, y2]], [[x3, y3]], [[x4, y4]] = dst
     og = img.shape[0] * img.shape[1]
     area = (x1*y2 + x2*y3 + x3*y4 + x4*y1) - (y1*x2 + y2*x3 + y3*x4 + y4*x1)
@@ -279,7 +279,9 @@ elif task==2:
     
     H_prev = None
 
-    for i in range(len(input_images)):
+    START = 147
+    
+    for i in range(START, len(input_images)):
         print(i)
         img_name = input_images[i]
         print(img_name)
@@ -300,7 +302,8 @@ elif task==2:
                                          40, maxIters=MAX_ITERS)
             good = False
             if (H is not None):
-                good = check_homography(H, frame)
+                #good = check_homography(H, frame)
+                good = True
             if (H is None) or (not good):
                 print('Could not find homography matrix')
                 H = H_prev
@@ -316,8 +319,9 @@ elif task==2:
                                                      img_template.shape[0]))
             cv2.imwrite(output_path+"/"+img_name,rotated)
 
-#Run with for example: 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/phone Dataset/TwoCameras/ulisboa1/photo
-#Run with for example: 4 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus Dataset/GoogleGlass/glass
+# 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/phone Dataset/TwoCameras/ulisboa1/photo
+# 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa2/phone2 Dataset/TwoCameras/ulisboa2/photo2
+# 4 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus Dataset/GoogleGlass/glass
 elif task == 4:
     img_template = cv2.imread(template_path)
     camera1_images_path = sys.argv[4]
@@ -333,7 +337,11 @@ elif task == 4:
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
     
-    for i in range(len(camera1_images)):
+    prev_frame = img_template
+    
+    START = 0
+    
+    for i in range(START, len(camera1_images)):
         img1_name = img2_name = camera1_images[i]
         print(img1_name)
         img1= cv2.imread(camera1_images_path+"/"+img1_name)
@@ -384,7 +392,32 @@ elif task == 4:
         else:
             print('No matches 2')
             
-        #blend the two images https://docs.opencv.org/4.x/d5/dc4/tutorial_adding_images.html
-        result = cv2.addWeighted(rotated1, 0.5, img_template, 0.5, 0)
-        cv2.imwrite(output_path+"/"+img2_name,result)
+        curr = None
+        
+        if rotated1 is not None:
+            img1_noskin = remove_skin_hsv(rotated1)
+            curr = img1_noskin
+        if rotated2 is not None:
+            img2_noskin = remove_skin_hsv(rotated2)
+            if curr is not None:
+                gray1 = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
+                mask1 = cv2.threshold(gray1, 0, 255, cv2.THRESH_BINARY_INV)[1]
+                mask1_inv = cv2.bitwise_not(mask1)
+                curr1_bg = cv2.bitwise_and(curr, curr, mask=mask1_inv)
+                img2_fg = cv2.bitwise_and(img2_noskin, img2_noskin, mask=mask1)
+                curr = cv2.add(curr1_bg, img2_fg)
+            else:
+                curr = img2_noskin
+        if curr is not None:
+            gray2 = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
+            mask2 = cv2.threshold(gray2, 0, 255, cv2.THRESH_BINARY_INV)[1]
+            mask2_inv = cv2.bitwise_not(mask2)
+            curr2_bg = cv2.bitwise_and(curr, curr, mask=mask2_inv)
+            prev_fg = cv2.bitwise_and(prev_frame, prev_frame, mask=mask2)
+            curr = cv2.add(curr2_bg, prev_fg)
+        else:
+            curr = prev_frame
+
+        cv2.imwrite(output_path+"/"+img1_name, curr)
+        prev_frame = curr
         
