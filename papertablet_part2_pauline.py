@@ -14,6 +14,8 @@ for i in range(1,61) :
     min = np.array([100, 100, 140], dtype = "uint8")
     max = np.array([180, 180, 180], dtype = "uint8")
 
+    img_1 = cv2.cvtColor(img_1, cv2.COLOR_BGR2GRAY)
+
     # Get pointer to video frames from primary device
     skinRegion = cv2.inRange(img_1,min,max)
 
