@@ -3,6 +3,7 @@ import numpy as np
 import sys
 import os
 import math
+import re
 """"
 ***********************
 Functions used for Task1
@@ -140,10 +141,10 @@ def estimate_good_homography_arucos(points1, points2, mask, MSETRESH=700000,GOOD
     numb_good_points=len(good_points1)
     mse=compute_mse(good_points1,good_points2)
     if((mse>MSETRESH or numb_good_points<GOOD_POINTS_TRESH)):
-        print(mse," ",numb_good_points," bad")
+        #print(mse," ",numb_good_points," bad")
         return False
     else:
-        print(mse," ",numb_good_points," good")
+        #print(mse," ",numb_good_points," good")
         return True
 
 def remove_background_gray(gray_frame):
@@ -216,11 +217,25 @@ def estimate_good_homography(points1, points2, mask, MSETRESH=1750000,GOOD_POINT
     numb_good_points=len(good_points1)
     mse=compute_mse(good_points1,good_points2)
     if(mse>MSETRESH or numb_good_points<GOOD_POINTS_TRESH):
-        print(mse," ",numb_good_points," bad")
         return False
     else:
-        print(mse," ",numb_good_points," good")
         return True
+
+def check_homography(H, img):
+    det = H[0,0] * H[1,1] - H[0,1] * H[1,0]
+    if det < 0:
+        return False
+    h,w,d = img.shape
+    pts = np.float32([[0,0],[0,h-1],[w-1,h-1],[w-1,0]]).reshape(-1,1,2)
+    dst = cv2.perspectiveTransform(pts.reshape(-1,1,2), H)
+    [[x1, y1]], [[x2, y2]], [[x3, y3]], [[x4, y4]] = dst
+    og = img.shape[0] * img.shape[1]
+    area = (x1*y2 + x2*y3 + x3*y4 + x4*y1) - (y1*x2 + y2*x3 + y3*x4 + y4*x1)
+    area = abs(area * 0.5)
+    ratio = area / og
+    if ratio < 1:
+        return False
+    return True
 
 """
 ***********************
@@ -258,7 +273,8 @@ elif task==2:
     input_images_path = sys.argv[4]
     img_template = cv2.imread(template_path)
     img_template = cv2.cvtColor(img_template, cv2.COLOR_BGR2GRAY)
-    input_images = os.listdir(input_images_path)
+    #input_images = os.listdir(input_images_path)
+    input_images=sorted(os.listdir(input_images_path), key=lambda f: int(re.sub('\D', '', f)))
     detector = cv2.xfeatures2d.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
     #FLANN Matcher
@@ -267,15 +283,12 @@ elif task==2:
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
     #img_template = cv2.medianBlur(img_template,7)
-    for i in range(len(input_images)):
+    for i in range(180,len(input_images)):
         print(i)
         img_name = input_images[i]
         print(img_name)
         frame = cv2.imread(input_images_path+"/"+img_name, cv2.COLOR_BGR2GRAY)
-        #frame_filtered = cv2.medianBlur(frame, 7) # Add median filter to image
-        #frame_filtered = cv2.GaussianBlur(frame,(3,3),cv2.BORDER_DEFAULT)
-        #gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        #frame_filtered = remove_background_gray(gray_frame)
+        #frame_filtered=remove_skin_hsv(frame)
         frame_filtered=frame
         #Find dst_points and src_points using SIFT
         src_points, dst_points = compute_SIFT(frame_filtered, img_template, des_template, key_template, 
@@ -287,9 +300,12 @@ elif task==2:
             # Compute the homography with the Ransac method
             H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 40, maxIters=3000)
             if(H is not None):
-                estimate_good_homography_arucos(src_points, dst_points, mask)
+                #is_good=estimate_good_homography_arucos(src_points, dst_points, mask)
+                is_good=check_homography(H, frame_filtered)
+                print(is_good)
                 rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], img_template.shape[0]))
-                cv2.imwrite(output_path+"/"+img_name,rotated)
+                if(is_good):
+                    cv2.imwrite(output_path+"/"+img_name,rotated)
             else:
                 print('Could not find homography matrix')
         else :
@@ -305,47 +321,100 @@ elif task == 4:
     camera2_images_path = sys.argv[5]
     camera1_images = os.listdir(camera1_images_path)
     camera2_images = os.listdir(camera2_images_path)
-    detector = cv2.xfeatures2d.SIFT_create()# SIFT detector
+    detector = cv2.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
     #FLANN Matcher
     FLANN_INDEX_KDTREE = 0
+    RATIO_TRESH = 0.7
     index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
-    for i in range(len(camera1_images)):
+    
+    prev_frame = img_template
+    
+    START = 110
+    
+    for i in range(START, len(camera1_images)):
         img1_name = img2_name = camera1_images[i]
         print(img1_name)
         img1= cv2.imread(camera1_images_path+"/"+img1_name)
         img2 = cv2.imread(camera2_images_path+"/"+img2_name)
-        #cv2.imshow('orginal1',img1)
-        #cv2.imshow('original2',img2)
+
         img1_noskin = remove_skin_hsv(img1)
         img2_noskin = remove_skin_hsv(img2)
-        #img1_noskin = remove_skin_rgb(img1)
-        #img2_noskin = remove_skin_rgb(img2)
-        #cv2.imshow('noskin1',img1_noskin)
-        #cv2.imshow('noskin2',img2_noskin)
-        src_points1, dst_points1 = compute_SIFT(img1_noskin, img_template, des_template, key_template, 
-                                                      detector, flann, ratio_tresh= 0.82)
-        src_points2, dst_points2 = compute_SIFT(img2_noskin, img_template, des_template, key_template, 
-                                                      detector, flann, ratio_tresh= 0.82)
-        if(len(dst_points1)>0):# If the numeber of good matches is good enough
-            H1, mask1 = cv2.findHomography(src_points1, dst_points1, cv2.RANSAC, 40, maxIters=3000)
-            if(H1 is not None):
-                rotated1 = cv2.warpPerspective(img1_noskin, H1, (img_template.shape[1], img_template.shape[0]))
+
+        src_points1, dst_points1 = compute_SIFT(img1, img_template, 
+                                                des_template, key_template, 
+                                                detector, flann, 
+                                                ratio_tresh=RATIO_TRESH)
+        src_points2, dst_points2 = compute_SIFT(img2, img_template, 
+                                                des_template, key_template, 
+                                                detector, flann, 
+                                                ratio_tresh=RATIO_TRESH)
+        
+        POINTS_THRESH = 4
+        MAX_ITERS = 200
+        
+        if(len(dst_points1)>POINTS_THRESH):# If the numeber of good matches is good enough
+            H1, mask1 = cv2.findHomography(src_points1, dst_points1, cv2.RANSAC, 
+                                           40, maxIters=MAX_ITERS)
+            good1 = False
+            if (H1 is not None):
+                good1 = check_homography(H1, img1)
+            if (H1 is not None) and good1:
+                rotated1 = cv2.warpPerspective(img1, H1, (img_template.shape[1], 
+                                                          img_template.shape[0]))
                 cv2.imwrite(output_path+"/"+"1"+img1_name,rotated1)
-                print("1")
-                estimate_good_homography(src_points1, dst_points1, mask1)
-        if(len(dst_points2)>0):
-            H2, mask2 = cv2.findHomography(src_points2, dst_points2, cv2.RANSAC, 40, maxIters=3000)
-            if(H2 is not None):
-                rotated2 = cv2.warpPerspective(img2_noskin, H2, (img_template.shape[1], img_template.shape[0]))
-                cv2.imwrite(output_path+"/"+"2"+img2_name,rotated2)
-                print("2") 
-                estimate_good_homography(src_points2, dst_points2, mask2)
             else:
-                print('Could not find homography matrix')
-        #blend the two images https://docs.opencv.org/4.x/d5/dc4/tutorial_adding_images.html
-        result = cv2.addWeighted(rotated1, 0.5, img_template, 0.5, 0)
-        cv2.imwrite(output_path+"/"+img2_name,result)
+                print('No H1')
+        else:
+            print('No matches 1')
+            
+        if(len(dst_points2)>POINTS_THRESH):
+            H2, mask2 = cv2.findHomography(src_points2, dst_points2, cv2.RANSAC, 
+                                           40, maxIters=MAX_ITERS)
+            good2 = False
+            if (H2 is not None):
+                good2 = check_homography(H2, img2)
+            if (H2 is not None) and good2:
+                rotated2 = cv2.warpPerspective(img2, H2, (img_template.shape[1], 
+                                                          img_template.shape[0]))
+                cv2.imwrite(output_path+"/"+"2"+img2_name,rotated2)
+            else:
+                print('No H2')
+        else:
+            print('No matches 2')
+            
+        curr = None
+        
+        if rotated1 is not None:
+            img1_noskin = remove_skin_hsv(rotated1)
+            curr = img1_noskin
+        if rotated2 is not None:
+            img2_noskin = remove_skin_hsv(rotated2)
+            if curr is not None:
+                gray1 = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
+                mask1 = cv2.threshold(gray1, 0, 255, cv2.THRESH_BINARY_INV)[1]
+                mask1_inv = cv2.bitwise_not(mask1)
+                curr1_bg = cv2.bitwise_and(curr, curr, mask=mask1_inv)
+                img2_fg = cv2.bitwise_and(img2_noskin, img2_noskin, mask=mask1)
+                curr = cv2.add(curr1_bg, img2_fg)
+            else:
+                curr = img2_noskin
+        if curr is not None:
+            gray2 = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
+            mask2 = cv2.threshold(gray2, 0, 255, cv2.THRESH_BINARY_INV)[1]
+            mask2_inv = cv2.bitwise_not(mask2)
+            curr2_bg = cv2.bitwise_and(curr, curr, mask=mask2_inv)
+            prev_fg = cv2.bitwise_and(prev_frame, prev_frame, mask=mask2)
+            curr = cv2.add(curr2_bg, prev_fg)
+        else:
+            curr = prev_frame
+
+        cv2.imwrite(output_path+"/"+img1_name, curr)
+        prev_frame = curr
+    
+    
+    
+    
         
