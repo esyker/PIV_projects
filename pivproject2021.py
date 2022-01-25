@@ -178,8 +178,28 @@ def remove_skin_rgb(bgr_image):
     return noSkinRGB
 
 
-def estimate_good_homography(numb_matches):
-    return
+def compute_mse(points1,points2):
+    err = np.subtract(points1, points2)
+    squared_err = np.square(err)
+    mse = squared_err.mean()
+    return mse
+
+def apply_mask(points,mask):
+    filtered_points = []
+    for i in range(len(points)):
+        if(mask[i][0]==1):
+            filtered_points.append(points[i])
+    return np.array(filtered_points)
+
+def estimate_good_homography(points1, mask1, points2, mask2, MSETRESH=1750000,GOOD_POINTS_TRESH=50):
+    good_points1=apply_mask(points1,mask1)
+    good_points2=apply_mask(points2, mask2)
+    numb_good_points=len(good_points1)
+    mse=compute_mse(good_points1,good_points2)
+    if(mse>MSETRESH or numb_good_points<GOOD_POINTS_TRESH):
+        return False
+    else:
+        return True
 
 """
 def remove_skin2(frame):
@@ -284,6 +304,7 @@ elif task == 4:
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
     for i in range(len(camera1_images)):
         img1_name = img2_name = camera1_images[i]
+        print(img1_name)
         img1= cv2.imread(camera1_images_path+"/"+img1_name)
         img2 = cv2.imread(camera2_images_path+"/"+img2_name)
         #cv2.imshow('orginal1',img1)
@@ -298,18 +319,21 @@ elif task == 4:
                                                       detector, flann, ratio_tresh= 0.82)
         src_points2, dst_points2 = compute_SIFT(img2_noskin, img_template, des_template, key_template, 
                                                       detector, flann, ratio_tresh= 0.82)
-        if(len(dst_points1)>0):# If the numeber of good matches is good enough
+        if(len(dst_points1)>70):# If the numeber of good matches is good enough
             H1, mask1 = cv2.findHomography(src_points1, dst_points1, cv2.RANSAC, 40, maxIters=3000)
             if(H1 is not None):
                 rotated1 = cv2.warpPerspective(img1_noskin, H1, (img_template.shape[1], img_template.shape[0]))
                 cv2.imwrite(output_path+"/"+"1"+img1_name,rotated1)
-        if(len(dst_points2)>0):
+                print('1 MSE:',estimate_good_homography(src_points1, mask1, dst_points1, mask1), " gmatches:",len(dst_points1))
+        if(len(dst_points2)>70):
             H2, mask2 = cv2.findHomography(src_points2, dst_points2, cv2.RANSAC, 40, maxIters=3000)
             if(H2 is not None):
                 rotated2 = cv2.warpPerspective(img2_noskin, H2, (img_template.shape[1], img_template.shape[0]))
                 cv2.imwrite(output_path+"/"+"2"+img2_name,rotated2)
+                print('2',estimate_good_homography(src_points2, mask2, dst_points2, mask2), " gmatches:",len(dst_points2),"\n")
             else:
                 print('Could not find homography matrix')
         #blend the two images https://docs.opencv.org/4.x/d5/dc4/tutorial_adding_images.html
         result = cv2.addWeighted(rotated1, 0.5, img_template, 0.5, 0)
         cv2.imwrite(output_path+"/"+img2_name,result)
+        
