@@ -139,12 +139,19 @@ def estimate_good_homography_arucos(points1, points2, mask, MSETRESH=700000,GOOD
     good_points2=apply_mask(points2, mask)
     numb_good_points=len(good_points1)
     mse=compute_mse(good_points1,good_points2)
-    if((mse>MSETRESH and numb_good_points<GOOD_POINTS_TRESH)):
+    if((mse>MSETRESH or numb_good_points<GOOD_POINTS_TRESH)):
         print(mse," ",numb_good_points," bad")
         return False
     else:
         print(mse," ",numb_good_points," good")
         return True
+
+def remove_background_gray(gray_frame):
+    min_gray = 147
+    max_gray = 178
+    paperRegionGray = cv2.inRange(gray_frame, min_gray, max_gray)
+    noBackGroundpaper = cv2.bitwise_and(gray_frame, gray_frame, mask = paperRegionGray)    
+    return noBackGroundpaper
 
 """"
 ***********************
@@ -250,6 +257,7 @@ if task==1:
 elif task==2:
     input_images_path = sys.argv[4]
     img_template = cv2.imread(template_path)
+    img_template = cv2.cvtColor(img_template, cv2.COLOR_BGR2GRAY)
     input_images = os.listdir(input_images_path)
     detector = cv2.xfeatures2d.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
@@ -265,7 +273,10 @@ elif task==2:
         print(img_name)
         frame = cv2.imread(input_images_path+"/"+img_name, cv2.COLOR_BGR2GRAY)
         #frame_filtered = cv2.medianBlur(frame, 7) # Add median filter to image
-        frame_filtered = cv2.GaussianBlur(frame,(3,3),cv2.BORDER_DEFAULT)
+        #frame_filtered = cv2.GaussianBlur(frame,(3,3),cv2.BORDER_DEFAULT)
+        #gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        #frame_filtered = remove_background_gray(gray_frame)
+        frame_filtered=frame
         #Find dst_points and src_points using SIFT
         src_points, dst_points = compute_SIFT(frame_filtered, img_template, des_template, key_template, 
                                                       detector, flann, ratio_tresh= 0.82)
