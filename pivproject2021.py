@@ -133,6 +133,18 @@ def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUN
         return src_points, dst_points
     else:#Not enough good matches
         return np.array([]), np.array([])
+    
+def estimate_good_homography_arucos(points1, points2, mask, MSETRESH=700000,GOOD_POINTS_TRESH=14):
+    good_points1=apply_mask(points1,mask)
+    good_points2=apply_mask(points2, mask)
+    numb_good_points=len(good_points1)
+    mse=compute_mse(good_points1,good_points2)
+    if((mse>MSETRESH and numb_good_points<GOOD_POINTS_TRESH)):
+        print(mse," ",numb_good_points," bad")
+        return False
+    else:
+        print(mse," ",numb_good_points," good")
+        return True
 
 """"
 ***********************
@@ -191,31 +203,17 @@ def apply_mask(points,mask):
             filtered_points.append(points[i])
     return np.array(filtered_points)
 
-def estimate_good_homography(points1, mask1, points2, mask2, MSETRESH=1750000,GOOD_POINTS_TRESH=50):
-    good_points1=apply_mask(points1,mask1)
-    good_points2=apply_mask(points2, mask2)
+def estimate_good_homography(points1, points2, mask, MSETRESH=1750000,GOOD_POINTS_TRESH=20):
+    good_points1=apply_mask(points1,mask)
+    good_points2=apply_mask(points2, mask)
     numb_good_points=len(good_points1)
     mse=compute_mse(good_points1,good_points2)
     if(mse>MSETRESH or numb_good_points<GOOD_POINTS_TRESH):
+        print(mse," ",numb_good_points," bad")
         return False
     else:
+        print(mse," ",numb_good_points," good")
         return True
-
-"""
-def remove_skin2(frame):
-    min_HSV = np.array([0, 58, 30], dtype = "uint8")
-    max_HSV = np.array([33, 255, 255], dtype = "uint8")
-    imageHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    imageYCrCb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
-    skinRegionHSV = cv2.inRange(imageHSV, min_HSV, max_HSV)
-    noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(skinRegionHSV))    
-    return noSkinHSV
-
-#def get_mask(rgbImage,hsvImage, ycrcbImage):
-#    for
-"""
-
-
 
 """
 ***********************
@@ -271,13 +269,14 @@ elif task==2:
         #Find dst_points and src_points using SIFT
         src_points, dst_points = compute_SIFT(frame_filtered, img_template, des_template, key_template, 
                                                       detector, flann, ratio_tresh= 0.82)
-        print("src: ",src_points.shape," ",src_points.dtype)
-        print("dst: ",dst_points.shape," ",dst_points.dtype)
+        #print("src: ",src_points.shape," ",src_points.dtype)
+        #print("dst: ",dst_points.shape," ",dst_points.dtype)
         if(len(dst_points)>0):
             # If the numeber of good matches is good enough, compute the homography
             # Compute the homography with the Ransac method
             H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 40, maxIters=3000)
             if(H is not None):
+                estimate_good_homography_arucos(src_points, dst_points, mask)
                 rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], img_template.shape[0]))
                 cv2.imwrite(output_path+"/"+img_name,rotated)
             else:
@@ -319,18 +318,20 @@ elif task == 4:
                                                       detector, flann, ratio_tresh= 0.82)
         src_points2, dst_points2 = compute_SIFT(img2_noskin, img_template, des_template, key_template, 
                                                       detector, flann, ratio_tresh= 0.82)
-        if(len(dst_points1)>70):# If the numeber of good matches is good enough
+        if(len(dst_points1)>0):# If the numeber of good matches is good enough
             H1, mask1 = cv2.findHomography(src_points1, dst_points1, cv2.RANSAC, 40, maxIters=3000)
             if(H1 is not None):
                 rotated1 = cv2.warpPerspective(img1_noskin, H1, (img_template.shape[1], img_template.shape[0]))
                 cv2.imwrite(output_path+"/"+"1"+img1_name,rotated1)
-                print('1 MSE:',estimate_good_homography(src_points1, mask1, dst_points1, mask1), " gmatches:",len(dst_points1))
-        if(len(dst_points2)>70):
+                print("1")
+                estimate_good_homography(src_points1, dst_points1, mask1)
+        if(len(dst_points2)>0):
             H2, mask2 = cv2.findHomography(src_points2, dst_points2, cv2.RANSAC, 40, maxIters=3000)
             if(H2 is not None):
                 rotated2 = cv2.warpPerspective(img2_noskin, H2, (img_template.shape[1], img_template.shape[0]))
                 cv2.imwrite(output_path+"/"+"2"+img2_name,rotated2)
-                print('2',estimate_good_homography(src_points2, mask2, dst_points2, mask2), " gmatches:",len(dst_points2),"\n")
+                print("2") 
+                estimate_good_homography(src_points2, dst_points2, mask2)
             else:
                 print('Could not find homography matrix')
         #blend the two images https://docs.opencv.org/4.x/d5/dc4/tutorial_adding_images.html
