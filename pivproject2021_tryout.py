@@ -3,7 +3,7 @@ import numpy as np
 import sys
 import os
 import math
-
+import re
 """"
 ***********************
 Functions used for Task1
@@ -134,13 +134,45 @@ def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUN
         return src_points, dst_points
     else:#Not enough good matches
         return np.array([]), np.array([])
-
     
+def estimate_good_homography_arucos(points1, points2, mask, MSETRESH=700000,GOOD_POINTS_TRESH=14):
+    good_points1=apply_mask(points1,mask)
+    good_points2=apply_mask(points2, mask)
+    numb_good_points=len(good_points1)
+    mse=compute_mse(good_points1,good_points2)
+    if((mse>MSETRESH or numb_good_points<GOOD_POINTS_TRESH)):
+        #print(mse," ",numb_good_points," bad")
+        return False
+    else:
+        #print(mse," ",numb_good_points," good")
+        return True
+
+def remove_background_gray(gray_frame):
+    min_gray = 147
+    max_gray = 178
+    paperRegionGray = cv2.inRange(gray_frame, min_gray, max_gray)
+    noBackGroundpaper = cv2.bitwise_and(gray_frame, gray_frame, mask = paperRegionGray)    
+    return noBackGroundpaper
+
+def remove_background_skin(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    ret, skin = cv2.threshold(gray,170,255,cv2.THRESH_BINARY)
+    wskin = cv2.bitwise_or(frame, frame, mask = skin)
+    return wskin
+
 """"
 ***********************
 Functions used for Task4
 ************************
 """
+def remove_skin_hsv(frame):
+    min_HSV = np.array([0, 58, 30], dtype = "uint8")
+    max_HSV = np.array([33, 255, 255], dtype = "uint8")
+    imageHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    skinRegionHSV = cv2.inRange(imageHSV, min_HSV, max_HSV)
+    noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(skinRegionHSV))    
+    return noSkinHSV
+
 def remove_skin_sleeve_hsv(frame):
     min_skin_HSV = np.array([0, 58, 30], dtype = "uint8")
     max_skin_HSV = np.array([33, 255, 255], dtype = "uint8")
@@ -151,6 +183,60 @@ def remove_skin_sleeve_hsv(frame):
     sleeveRegionHSV = cv2.inRange(imageHSV, min_sleeve_HSV, max_sleeve_HSV)
     noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(cv2.bitwise_or(skinRegionHSV,sleeveRegionHSV)))    
     return noSkinHSV
+
+# Values are taken from: 'RGB-H-CbCr Skin Colour Model for Human Face Detection'
+# (R > 95) AND (G > 40) AND (B > 20) AND (max{R, G, B} − min{R, G, B} > 15) AND (|R − G| > 15) AND (R > G) AND (R > B)
+# (R > 220) AND (G > 210) AND (B > 170) AND (|R − G| ≤ 15) AND (R > B) AND (G > B)
+def bgr_skin(b, g, r):
+    """Rule for skin pixel segmentation based on the paper 'RGB-H-CbCr Skin Colour Model for Human Face Detection'"""
+    e1 = bool((r > 95) and (g > 40) and (b > 20) and ((max(r, max(g, b)) - min(r, min(g, b))) > 15) and (
+    abs(int(r) - int(g)) > 15) and (r > g) and (r > b))
+    e2 = bool((r > 220) and (g > 210) and (b > 170) and (abs(int(r) - int(g)) <= 15) and (r > b) and (g > b))
+    return e1 or e2
+
+# Skin detector based on the BGR color space
+def skin_rgb_mask(bgr_image):
+    """Skin segmentation based on the RGB color space"""
+    h = bgr_image.shape[0]
+    w = bgr_image.shape[1]
+    # We crete the result image with back background
+    res = np.zeros((h, w, 1), dtype="uint8")
+    # Only 'skin pixels' will be set to white (255) in the res image:
+    for y in range(0, h):
+        for x in range(0, w):
+            (b, g, r) = bgr_image[y, x]
+            if bgr_skin(b, g, r):
+                res[y, x] = 1
+    return res
+
+def remove_skin_rgb(bgr_image):
+    mask = skin_rgb_mask(bgr_image)
+    noSkinRGB = cv2.bitwise_and(bgr_image, bgr_image, mask = cv2.bitwise_not(mask))
+    return noSkinRGB
+
+
+def compute_mse(points1,points2):
+    err = np.subtract(points1, points2)
+    squared_err = np.square(err)
+    mse = squared_err.mean()
+    return mse
+
+def apply_mask(points,mask):
+    filtered_points = []
+    for i in range(len(points)):
+        if(mask[i][0]==1):
+            filtered_points.append(points[i])
+    return np.array(filtered_points)
+
+def estimate_good_homography(points1, points2, mask, MSETRESH=1750000,GOOD_POINTS_TRESH=20):
+    good_points1=apply_mask(points1,mask)
+    good_points2=apply_mask(points2, mask)
+    numb_good_points=len(good_points1)
+    mse=compute_mse(good_points1,good_points2)
+    if(mse>MSETRESH or numb_good_points<GOOD_POINTS_TRESH):
+        return False
+    else:
+        return True
 
 def check_homography(H, img, scale_factor):
     det2 = H[0,0] * H[1,1] - H[0,1] * H[1,0]
@@ -216,7 +302,8 @@ if task==1:
 elif task==2:
     input_images_path = sys.argv[4]
     img_template = cv2.imread(template_path)
-    input_images = os.listdir(input_images_path)
+    #input_images = os.listdir(input_images_path)
+    input_images=sorted(os.listdir(input_images_path), key=lambda f: int(re.sub('\D', '', f)))
     
     detector = cv2.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
@@ -334,6 +421,7 @@ elif task == 4:
             if (H1 is not None) and good1:
                 rotated1 = cv2.warpPerspective(img1, H1, (img_template.shape[1], 
                                                           img_template.shape[0]))
+                cv2.imwrite(output_path+"/"+"1"+img1_name,rotated1)
             else:
                 print('No H1')
         else:
@@ -349,6 +437,7 @@ elif task == 4:
             if (H2 is not None) and good2:
                 rotated2 = cv2.warpPerspective(img2, H2, (img_template.shape[1], 
                                                           img_template.shape[0]))
+                cv2.imwrite(output_path+"/"+"2"+img2_name,rotated2)
             else:
                 print('No H2')
         else:
@@ -379,9 +468,8 @@ elif task == 4:
             curr = cv2.add(curr2_bg, prev_fg)
         else:
             curr = prev_frame
-        
-        result = curr
-        #result = cv2.addWeighted(curr, 0.5, prev_frame, 0.5, 0)
+
+        result = cv2.addWeighted(curr, 0.5, prev_frame, 0.5, 0)
         cv2.imwrite(output_path+"/"+img1_name, result)
         prev_frame = curr
     

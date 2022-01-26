@@ -27,7 +27,8 @@ def rgb_histogram(img):
 
 img1 = cv2.imread('./Input_Images/frame1031.png')          # queryImage
 img2 = cv2.imread('Dataset/template2_fewArucos.png') # trainImage
-img3 = cv2.imread('Dataset/GoogleGlass/nexus/rgb0953.jpg')#sleeve image
+img3 = cv2.imread('Dataset/GoogleGlass/glass/rgb0987.jpg')#sleeve image
+img10 = cv2.imread('Output_Images/rgb0987.jpg')
 
 #gray_histogram(img1)
 #rgb_histogram(img1)
@@ -58,7 +59,7 @@ def remove_skin_sleeve_hsv(frame):
     noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(cv2.bitwise_or(skinRegionHSV,sleeveRegionHSV)))    
     return noSkinHSV
 
-img4 = remove_skin_sleeve_hsv(img3)
+img4 = remove_skin_sleeve_hsv(img10)
 plt.figure(1)
 plt.imshow(img4)
 plt.show()

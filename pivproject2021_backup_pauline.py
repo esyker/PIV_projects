@@ -3,7 +3,7 @@ import numpy as np
 import sys
 import os
 import math
-
+import re
 """"
 ***********************
 Functions used for Task1
@@ -134,13 +134,45 @@ def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUN
         return src_points, dst_points
     else:#Not enough good matches
         return np.array([]), np.array([])
-
     
+def estimate_good_homography_arucos(points1, points2, mask, MSETRESH=700000,GOOD_POINTS_TRESH=14):
+    good_points1=apply_mask(points1,mask)
+    good_points2=apply_mask(points2, mask)
+    numb_good_points=len(good_points1)
+    mse=compute_mse(good_points1,good_points2)
+    if((mse>MSETRESH or numb_good_points<GOOD_POINTS_TRESH)):
+        #print(mse," ",numb_good_points," bad")
+        return False
+    else:
+        #print(mse," ",numb_good_points," good")
+        return True
+
+def remove_background_gray(gray_frame):
+    min_gray = 147
+    max_gray = 178
+    paperRegionGray = cv2.inRange(gray_frame, min_gray, max_gray)
+    noBackGroundpaper = cv2.bitwise_and(gray_frame, gray_frame, mask = paperRegionGray)    
+    return noBackGroundpaper
+
+def remove_background_skin(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    ret, skin = cv2.threshold(gray,170,255,cv2.THRESH_BINARY)
+    wskin = cv2.bitwise_or(frame, frame, mask = skin)
+    return wskin
+
 """"
 ***********************
 Functions used for Task4
 ************************
 """
+def remove_skin_hsv(frame):
+    min_HSV = np.array([0, 58, 30], dtype = "uint8")
+    max_HSV = np.array([33, 255, 255], dtype = "uint8")
+    imageHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    skinRegionHSV = cv2.inRange(imageHSV, min_HSV, max_HSV)
+    noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(skinRegionHSV))    
+    return noSkinHSV
+
 def remove_skin_sleeve_hsv(frame):
     min_skin_HSV = np.array([0, 58, 30], dtype = "uint8")
     max_skin_HSV = np.array([33, 255, 255], dtype = "uint8")
@@ -152,32 +184,73 @@ def remove_skin_sleeve_hsv(frame):
     noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(cv2.bitwise_or(skinRegionHSV,sleeveRegionHSV)))    
     return noSkinHSV
 
-def check_homography(H, img, scale_factor):
-    det2 = H[0,0] * H[1,1] - H[0,1] * H[1,0]
-    if (det2 <= 0.1):
+# Values are taken from: 'RGB-H-CbCr Skin Colour Model for Human Face Detection'
+# (R > 95) AND (G > 40) AND (B > 20) AND (max{R, G, B} − min{R, G, B} > 15) AND (|R − G| > 15) AND (R > G) AND (R > B)
+# (R > 220) AND (G > 210) AND (B > 170) AND (|R − G| ≤ 15) AND (R > B) AND (G > B)
+def bgr_skin(b, g, r):
+    """Rule for skin pixel segmentation based on the paper 'RGB-H-CbCr Skin Colour Model for Human Face Detection'"""
+    e1 = bool((r > 95) and (g > 40) and (b > 20) and ((max(r, max(g, b)) - min(r, min(g, b))) > 15) and (
+    abs(int(r) - int(g)) > 15) and (r > g) and (r > b))
+    e2 = bool((r > 220) and (g > 210) and (b > 170) and (abs(int(r) - int(g)) <= 15) and (r > b) and (g > b))
+    return e1 or e2
+
+# Skin detector based on the BGR color space
+def skin_rgb_mask(bgr_image):
+    """Skin segmentation based on the RGB color space"""
+    h = bgr_image.shape[0]
+    w = bgr_image.shape[1]
+    # We crete the result image with back background
+    res = np.zeros((h, w, 1), dtype="uint8")
+    # Only 'skin pixels' will be set to white (255) in the res image:
+    for y in range(0, h):
+        for x in range(0, w):
+            (b, g, r) = bgr_image[y, x]
+            if bgr_skin(b, g, r):
+                res[y, x] = 1
+    return res
+
+def remove_skin_rgb(bgr_image):
+    mask = skin_rgb_mask(bgr_image)
+    noSkinRGB = cv2.bitwise_and(bgr_image, bgr_image, mask = cv2.bitwise_not(mask))
+    return noSkinRGB
+
+
+def compute_mse(points1,points2):
+    err = np.subtract(points1, points2)
+    squared_err = np.square(err)
+    mse = squared_err.mean()
+    return mse
+
+def apply_mask(points,mask):
+    filtered_points = []
+    for i in range(len(points)):
+        if(mask[i][0]==1):
+            filtered_points.append(points[i])
+    return np.array(filtered_points)
+
+def estimate_good_homography(points1, points2, mask, MSETRESH=1750000,GOOD_POINTS_TRESH=20):
+    good_points1=apply_mask(points1,mask)
+    good_points2=apply_mask(points2, mask)
+    numb_good_points=len(good_points1)
+    mse=compute_mse(good_points1,good_points2)
+    if(mse>MSETRESH or numb_good_points<GOOD_POINTS_TRESH):
         return False
-    det3 = np.linalg.det(H)
-    if (det3 <= 0.1):
+    else:
+        return True
+
+def check_homography(H, img):
+    det = H[0,0] * H[1,1] - H[0,1] * H[1,0]
+    if det < 0:
         return False
     h,w,d = img.shape
     pts = np.float32([[0,0],[0,h-1],[w-1,h-1],[w-1,0]]).reshape(-1,1,2)
-    dst = cv2.perspectiveTransform(pts, H)
+    dst = cv2.perspectiveTransform(pts.reshape(-1,1,2), H)
     [[x1, y1]], [[x2, y2]], [[x3, y3]], [[x4, y4]] = dst
     og = img.shape[0] * img.shape[1]
     area = (x1*y2 + x2*y3 + x3*y4 + x4*y1) - (y1*x2 + y2*x3 + y3*x4 + y4*x1)
     area = abs(area * 0.5)
     ratio = area / og
-    
-    MAX_SCALE = 4
-    ratio_len = np.sqrt(ratio)
-    det2_len = np.sqrt(det2)
-    det3_len = np.cbrt(det3)
-    print(ratio_len, det2_len, det3_len)
-    if (ratio_len < (scale_factor/MAX_SCALE)) or (ratio_len > (scale_factor*MAX_SCALE)):
-        return False
-    if (det2_len < (scale_factor/MAX_SCALE)) or (det2_len > (scale_factor*MAX_SCALE)):
-        return False
-    if (det3_len < (scale_factor/MAX_SCALE)) or (det3_len > (scale_factor*MAX_SCALE)):
+    if ratio < 1:
         return False
     return True
 
@@ -216,60 +289,47 @@ if task==1:
 elif task==2:
     input_images_path = sys.argv[4]
     img_template = cv2.imread(template_path)
-    input_images = os.listdir(input_images_path)
-    
-    detector = cv2.SIFT_create()# SIFT detector
+    img_template = cv2.cvtColor(img_template, cv2.COLOR_BGR2GRAY)
+    #input_images = os.listdir(input_images_path)
+    input_images=sorted(os.listdir(input_images_path), key=lambda f: int(re.sub('\D', '', f)))
+    detector = cv2.xfeatures2d.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
-    
     #FLANN Matcher
     FLANN_INDEX_KDTREE = 0
-    RATIO_TRESH = 0.85
     index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
-    
-    H_prev = None
-
-    START = 0
-    scale_factor = img_template.shape[0] / cv2.imread(input_images_path+"/"+input_images[0]).shape[0]
-    reproj_thresh = int(15 * scale_factor)
-    
-    for i in range(START, len(input_images)):
+    #img_template = cv2.medianBlur(img_template,7)
+    for i in range(1,len(input_images)):
+        print(i)
         img_name = input_images[i]
-        print("\n"+img_name)
+        print(img_name)
         frame = cv2.imread(input_images_path+"/"+img_name)
+        #frame_filtered=remove_skin_hsv(frame)
+        frame_filtered = remove_background_skin(frame)
+        #frame_filtered=frame
         #Find dst_points and src_points using SIFT
-        src_points, dst_points = compute_SIFT(frame, img_template, 
-                                              des_template, key_template, 
-                                              detector, flann, 
-                                              ratio_tresh=RATIO_TRESH)
-
-        POINTS_THRESH = 4
-        MAX_ITERS = 200
-        
-        if (len(dst_points)>POINTS_THRESH):
+        src_points, dst_points = compute_SIFT(frame_filtered, img_template, des_template, key_template, 
+                                                      detector, flann, ratio_tresh= 0.82)
+        #print("src: ",src_points.shape," ",src_points.dtype)
+        #print("dst: ",dst_points.shape," ",dst_points.dtype)
+        if(len(dst_points)>0):
             # If the numeber of good matches is good enough, compute the homography
             # Compute the homography with the Ransac method
-            H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 
-                                         reproj_thresh, maxIters=MAX_ITERS)
-            good = False
-            if (H is not None):
-                good = check_homography(H, frame, scale_factor)
-            if (H is None) or (not good):
-                print('### No H')
-                H = H_prev
+            H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 40, maxIters=3000)
+            if(H is not None):
+                #is_good=estimate_good_homography_arucos(src_points, dst_points, mask)
+                is_good=check_homography(H, frame_filtered)
+                print(is_good)
+                rotated = cv2.warpPerspective(frame_filtered, H, (img_template.shape[1], img_template.shape[0]))
+                if(is_good):
+                    cv2.imwrite(output_path+"/"+img_name,rotated)
+            else:
+                print('Could not find homography matrix')
         else :
             # If the numeber of good matches is not good enough, do not compute the homography
             # Print an error message
-            print('### No matches')
-            H = H_prev
-    
-        if (H is None):
-            continue
-        rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], 
-                                                 img_template.shape[0]))
-        cv2.imwrite(output_path+"/"+img_name, rotated)
-        H_prev = H
+            print('not enough good matches')
 
 #Run with for example: 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/phone Dataset/TwoCameras/ulisboa1/photo
 #Run with for example: 4 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus Dataset/GoogleGlass/glass
@@ -279,39 +339,27 @@ elif task == 4:
     camera2_images_path = sys.argv[5]
     camera1_images = os.listdir(camera1_images_path)
     camera2_images = os.listdir(camera2_images_path)
-    
     detector = cv2.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
-    
     #FLANN Matcher
     FLANN_INDEX_KDTREE = 0
-    RATIO_TRESH = 0.85
+    RATIO_TRESH = 0.7
     index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
     
     prev_frame = img_template
     
-    START = 225
-    
-    data1_sample =  cv2.imread(camera1_images_path+"/"+camera1_images[0])
-    scale_factor1 = img_template.shape[0] / data1_sample.shape[0]
-    reproj_thresh1 = int(15 * scale_factor1)
-    data2_sample = cv2.imread(camera2_images_path+"/"+camera2_images[0])
-    scale_factor2 = img_template.shape[0] / data2_sample.shape[0]
-    reproj_thresh2 = int(15 * scale_factor2)
+    START = 110
     
     for i in range(START, len(camera1_images)):
-        rotated1 = None
-        rotated2 = None
-        img1_name = camera1_images[i]
-        img2_name = camera2_images[i*2 + 1]
+        img1_name = img2_name = camera1_images[i]
         print(img1_name)
-        img1 = cv2.imread(camera1_images_path+"/"+img1_name)
+        img1= cv2.imread(camera1_images_path+"/"+img1_name)
         img2 = cv2.imread(camera2_images_path+"/"+img2_name)
 
-        img1_noskin = remove_skin_sleeve_hsv(img1)
-        img2_noskin = remove_skin_sleeve_hsv(img2)
+        img1_noskin = remove_skin_hsv(img1)
+        img2_noskin = remove_skin_hsv(img2)
 
         src_points1, dst_points1 = compute_SIFT(img1, img_template, 
                                                 des_template, key_template, 
@@ -327,28 +375,29 @@ elif task == 4:
         
         if(len(dst_points1)>POINTS_THRESH):# If the numeber of good matches is good enough
             H1, mask1 = cv2.findHomography(src_points1, dst_points1, cv2.RANSAC, 
-                                           reproj_thresh1, maxIters=MAX_ITERS)
+                                           40, maxIters=MAX_ITERS)
             good1 = False
             if (H1 is not None):
-                good1 = check_homography(H1, img1, scale_factor1)
+                good1 = check_homography(H1, img1)
             if (H1 is not None) and good1:
                 rotated1 = cv2.warpPerspective(img1, H1, (img_template.shape[1], 
                                                           img_template.shape[0]))
+                cv2.imwrite(output_path+"/"+"1"+img1_name,rotated1)
             else:
                 print('No H1')
         else:
             print('No matches 1')
             
-            
         if(len(dst_points2)>POINTS_THRESH):
             H2, mask2 = cv2.findHomography(src_points2, dst_points2, cv2.RANSAC, 
-                                           reproj_thresh2, maxIters=MAX_ITERS)
+                                           40, maxIters=MAX_ITERS)
             good2 = False
             if (H2 is not None):
-                good2 = check_homography(H2, img2, scale_factor2)
+                good2 = check_homography(H2, img2)
             if (H2 is not None) and good2:
                 rotated2 = cv2.warpPerspective(img2, H2, (img_template.shape[1], 
                                                           img_template.shape[0]))
+                cv2.imwrite(output_path+"/"+"2"+img2_name,rotated2)
             else:
                 print('No H2')
         else:
@@ -379,10 +428,8 @@ elif task == 4:
             curr = cv2.add(curr2_bg, prev_fg)
         else:
             curr = prev_frame
-        
-        result = curr
-        #result = cv2.addWeighted(curr, 0.5, prev_frame, 0.5, 0)
-        cv2.imwrite(output_path+"/"+img1_name, result)
+
+        cv2.imwrite(output_path+"/"+img1_name, curr)
         prev_frame = curr
     
     
