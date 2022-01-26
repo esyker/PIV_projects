@@ -154,6 +154,12 @@ def remove_background_gray(gray_frame):
     noBackGroundpaper = cv2.bitwise_and(gray_frame, gray_frame, mask = paperRegionGray)    
     return noBackGroundpaper
 
+def remove_background_skin(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    ret, skin = cv2.threshold(gray,170,255,cv2.THRESH_BINARY)
+    wskin = cv2.bitwise_or(frame, frame, mask = skin)
+    return wskin
+
 """"
 ***********************
 Functions used for Task4
@@ -283,13 +289,14 @@ elif task==2:
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
     #img_template = cv2.medianBlur(img_template,7)
-    for i in range(180,len(input_images)):
+    for i in range(1,len(input_images)):
         print(i)
         img_name = input_images[i]
         print(img_name)
-        frame = cv2.imread(input_images_path+"/"+img_name, cv2.COLOR_BGR2GRAY)
+        frame = cv2.imread(input_images_path+"/"+img_name)
         #frame_filtered=remove_skin_hsv(frame)
-        frame_filtered=frame
+        frame_filtered = remove_background_skin(frame)
+        #frame_filtered=frame
         #Find dst_points and src_points using SIFT
         src_points, dst_points = compute_SIFT(frame_filtered, img_template, des_template, key_template, 
                                                       detector, flann, ratio_tresh= 0.82)
@@ -303,7 +310,7 @@ elif task==2:
                 #is_good=estimate_good_homography_arucos(src_points, dst_points, mask)
                 is_good=check_homography(H, frame_filtered)
                 print(is_good)
-                rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], img_template.shape[0]))
+                rotated = cv2.warpPerspective(frame_filtered, H, (img_template.shape[1], img_template.shape[0]))
                 if(is_good):
                     cv2.imwrite(output_path+"/"+img_name,rotated)
             else:
