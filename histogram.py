@@ -27,7 +27,7 @@ def rgb_histogram(img):
 
 img1 = cv2.imread('./Input_Images/frame1031.png')          # queryImage
 img2 = cv2.imread('Dataset/template2_fewArucos.png') # trainImage
-img3 = cv2.imread('Dataset/GoogleGlass/glass/rgb0925.jpg')#sleeve image
+img3 = cv2.imread('Dataset/GoogleGlass/nexus/rgb0953.jpg')#sleeve image
 
 #gray_histogram(img1)
 #rgb_histogram(img1)
@@ -38,20 +38,20 @@ img3 = cv2.imread('Dataset/GoogleGlass/glass/rgb0925.jpg')#sleeve image
 
 #cv2.imshow('nobackground',removedBackground)
 
+#REMOVE SKIN AND SLEEVE
 # Attention: OpenCV uses BGR color ordering per default whereas
 # Matplotlib assumes RGB color ordering!
-plt.figure(1)
-plt.imshow(cv2.cvtColor(img3, cv2.COLOR_BGR2HSV))
-plt.show()
+
+#plt.figure(1)
+#plt.imshow(cv2.cvtColor(img3, cv2.COLOR_BGR2HSV))
+#plt.show()
 
 
 def remove_skin_sleeve_hsv(frame):
     min_skin_HSV = np.array([0, 58, 30], dtype = "uint8")
     max_skin_HSV = np.array([33, 255, 255], dtype = "uint8")
-    min_sleeve_HSV = np.array([90, 80, 9], dtype = "uint8")
-    max_sleeve_HSV = np.array([131, 224, 60], dtype = "uint8")
-    min_sleeve_HSV = np.array([90,100,0],dtype="uint8")
-    max_sleeve_HSV = np.array([120,180,80],dtype="uint8")
+    min_sleeve_HSV = np.array([10,0,0],dtype="uint8")
+    max_sleeve_HSV = np.array([120,255,80],dtype="uint8")
     imageHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     skinRegionHSV = cv2.inRange(imageHSV, min_skin_HSV, max_skin_HSV)
     sleeveRegionHSV = cv2.inRange(imageHSV, min_sleeve_HSV, max_sleeve_HSV)
