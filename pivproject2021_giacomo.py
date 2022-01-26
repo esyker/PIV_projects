@@ -216,8 +216,11 @@ def estimate_good_homography(points1, points2, mask, MSETRESH=1750000,GOOD_POINT
         return True
     
 def check_homography(H, img):
-    det = H[0,0] * H[1,1] - H[0,1] * H[1,0]
-    if det < 0:
+    det2 = H[0,0] * H[1,1] - H[0,1] * H[1,0]
+    if (det2 < 0.3) or (det2 > 100):
+        return False
+    det3 = np.linalg.det(H)
+    if (det3 < 0.3) or (det3 > 100):
         return False
     h,w,d = img.shape
     pts = np.float32([[0,0],[0,h-1],[w-1,h-1],[w-1,0]]).reshape(-1,1,2)
@@ -258,11 +261,14 @@ if task==1:
         rotated = cv2.warpPerspective(frame,H, (img_template.shape[1],img_template.shape[0]))
         cv2.imwrite(output_path+"/"+img_name,rotated)
 
-#Run with for example: 2 Dataset/template2_fewArucos.png Output_Images Input_Images_Small
-#Run with for example: 2 Dataset/formsns/templateSNS.jpg Output_Images Dataset/formsns/receitaSNS
-#Run with for example: 2 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/glass
-#Run with for example: 2 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus
-#Run with for example: 2 Dataset/Gehry/Template_Gehry.jpg Output_Images Dataset/Gehry/images
+# 2 Dataset/template2_fewArucos.png Output_Images Dataset/FewArucos-Viewpoint2_images
+# 2 Dataset/formsns/templateSNS.jpg Output_Images Dataset/formsns/receitaSNS
+# 2 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/glass
+# 2 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus
+# 2 Dataset/Gehry/Template_Gehry.jpg Output_Images Dataset/Gehry/images
+# 2 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/photo
+# 2 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa2/photo2
+# 2 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa2/phone2
 elif task==2:
     input_images_path = sys.argv[4]
     img_template = cv2.imread(template_path)
@@ -272,19 +278,19 @@ elif task==2:
     #FLANN Matcher
     
     FLANN_INDEX_KDTREE = 0
-    RATIO_TRESH = 0.7
+    RATIO_TRESH = 0.85
     index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
     
     H_prev = None
+    miss_count = 0
 
-    START = 147
+    START = 0
     
     for i in range(START, len(input_images)):
-        print(i)
         img_name = input_images[i]
-        print(img_name)
+        print("\n"+img_name)
         frame = cv2.imread(input_images_path+"/"+img_name)
         #Find dst_points and src_points using SIFT
         src_points, dst_points = compute_SIFT(frame, img_template, 
@@ -302,22 +308,22 @@ elif task==2:
                                          40, maxIters=MAX_ITERS)
             good = False
             if (H is not None):
-                #good = check_homography(H, frame)
-                good = True
+                good = check_homography(H, frame)
             if (H is None) or (not good):
-                print('Could not find homography matrix')
+                print('### No H')
                 H = H_prev
         else :
             # If the numeber of good matches is not good enough, do not compute the homography
             # Print an error message
-            print('not enough good matches')
+            print('### No matches')
             H = H_prev
             
-        H_prev = H
         if (H is not None):
             rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], 
                                                      img_template.shape[0]))
             cv2.imwrite(output_path+"/"+img_name,rotated)
+        
+        H_prev = H
 
 # 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/phone Dataset/TwoCameras/ulisboa1/photo
 # 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa2/phone2 Dataset/TwoCameras/ulisboa2/photo2
