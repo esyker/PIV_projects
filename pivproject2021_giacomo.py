@@ -3,6 +3,9 @@ import numpy as np
 import sys
 import os
 import math
+import matplotlib.pyplot as plt
+from skimage.metrics import structural_similarity
+
 """"
 ***********************
 Functions used for Task1
@@ -215,12 +218,12 @@ def estimate_good_homography(points1, points2, mask, MSETRESH=1750000,GOOD_POINT
         print(mse," ",numb_good_points," good")
         return True
     
-def check_homography(H, img):
+def check_homography(H, img, scale_factor):
     det2 = H[0,0] * H[1,1] - H[0,1] * H[1,0]
-    if (det2 < 0.3) or (det2 > 100):
+    if (det2 <= 0.1):
         return False
     det3 = np.linalg.det(H)
-    if (det3 < 0.3) or (det3 > 100):
+    if (det3 <= 0.1):
         return False
     h,w,d = img.shape
     pts = np.float32([[0,0],[0,h-1],[w-1,h-1],[w-1,0]]).reshape(-1,1,2)
@@ -230,9 +233,49 @@ def check_homography(H, img):
     area = (x1*y2 + x2*y3 + x3*y4 + x4*y1) - (y1*x2 + y2*x3 + y3*x4 + y4*x1)
     area = abs(area * 0.5)
     ratio = area / og
-    if ratio < 1:
+    
+    MAX_SCALE = 4
+    ratio_len = np.sqrt(ratio)
+    det2_len = np.sqrt(det2)
+    det3_len = np.cbrt(det3)
+    print(ratio_len, det2_len, det3_len)
+    if (ratio_len < (scale_factor/MAX_SCALE)) or (ratio_len > (scale_factor*MAX_SCALE)):
+        return False
+    if (det2_len < (scale_factor/MAX_SCALE)) or (det2_len > (scale_factor*MAX_SCALE)):
+        return False
+    if (det3_len < (scale_factor/MAX_SCALE)) or (det3_len > (scale_factor*MAX_SCALE)):
         return False
     return True
+
+def get_diff_mask(img1, img2):
+    img1_mod = cv2.convertScaleAbs(img1, alpha=1.1)
+    img1_mod = cv2.normalize(img1_mod, img1_mod, 0, 255, cv2.NORM_MINMAX)
+    img1_mod = cv2.GaussianBlur(img1_mod, (0,0), 15, 15)
+    img2_mod = cv2.convertScaleAbs(img2, alpha=1.1)
+    img2_mod = cv2.normalize(img2_mod, img2_mod, 0, 255, cv2.NORM_MINMAX)
+    img2_mod = cv2.GaussianBlur(img2_mod, (0,0), 15, 15)
+    
+    img1_gray = cv2.cvtColor(img1_mod, cv2.COLOR_BGR2GRAY)
+    img2_gray = cv2.cvtColor(img2_mod, cv2.COLOR_BGR2GRAY)
+    
+    # Compute SSIM between two images
+    (score, diff) = structural_similarity(img1_gray, img2_gray, full=True)
+    diff = (diff * 255).astype("uint8")
+    
+    # Threshold the difference image, followed by finding contours to
+    # obtain the regions of the two input images that differ
+    thresh = cv2.threshold(diff, 230, 255, cv2.THRESH_BINARY_INV)[1]
+    contours = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = contours[0] if len(contours) == 2 else contours[1]
+    
+    areas = np.zeros(img1.shape, dtype='uint8')
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area > ((img1.shape[0]/100) * (img1.shape[1]/100)):
+            x,y,w,h = cv2.boundingRect(c)
+            cv2.drawContours(areas, [c], 0, (255,255,255), -1)
+    mask = cv2.cvtColor(areas, cv2.COLOR_BGR2GRAY)
+    return mask
 
 """
 ***********************
@@ -267,16 +310,18 @@ if task==1:
 # 2 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus
 # 2 Dataset/Gehry/Template_Gehry.jpg Output_Images Dataset/Gehry/images
 # 2 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/photo
+# 2 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/phone
 # 2 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa2/photo2
 # 2 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa2/phone2
 elif task==2:
     input_images_path = sys.argv[4]
     img_template = cv2.imread(template_path)
     input_images = os.listdir(input_images_path)
+    
     detector = cv2.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
-    #FLANN Matcher
     
+    #FLANN Matcher
     FLANN_INDEX_KDTREE = 0
     RATIO_TRESH = 0.85
     index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
@@ -284,7 +329,6 @@ elif task==2:
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
     
     H_prev = None
-    miss_count = 0
 
     START = 0
     
@@ -301,14 +345,17 @@ elif task==2:
         POINTS_THRESH = 4
         MAX_ITERS = 200
         
+        scale_factor = img_template.shape[0] / frame.shape[0]
+        reproj_thresh = int(15 * scale_factor)
+        
         if (len(dst_points)>POINTS_THRESH):
             # If the numeber of good matches is good enough, compute the homography
             # Compute the homography with the Ransac method
             H, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 
-                                         40, maxIters=MAX_ITERS)
+                                         reproj_thresh, maxIters=MAX_ITERS)
             good = False
             if (H is not None):
-                good = check_homography(H, frame)
+                good = check_homography(H, frame, scale_factor)
             if (H is None) or (not good):
                 print('### No H')
                 H = H_prev
@@ -318,10 +365,12 @@ elif task==2:
             print('### No matches')
             H = H_prev
             
-        if (H is not None):
-            rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], 
-                                                     img_template.shape[0]))
-            cv2.imwrite(output_path+"/"+img_name,rotated)
+        if (H is None):
+            continue
+        
+        rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], 
+                                                 img_template.shape[0]))
+        cv2.imwrite(output_path+"/"+img_name, rotated)
         
         H_prev = H
 
@@ -334,23 +383,26 @@ elif task == 4:
     camera2_images_path = sys.argv[5]
     camera1_images = os.listdir(camera1_images_path)
     camera2_images = os.listdir(camera2_images_path)
+    
     detector = cv2.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
+    
     #FLANN Matcher
     FLANN_INDEX_KDTREE = 0
-    RATIO_TRESH = 0.7
+    RATIO_TRESH = 0.85
     index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
     
     prev_frame = img_template
     
-    START = 0
+    START = 225
     
     for i in range(START, len(camera1_images)):
-        img1_name = img2_name = camera1_images[i]
+        img1_name = camera1_images[i]
+        img2_name = camera2_images[i*2 + 1]
         print(img1_name)
-        img1= cv2.imread(camera1_images_path+"/"+img1_name)
+        img1 = cv2.imread(camera1_images_path+"/"+img1_name)
         img2 = cv2.imread(camera2_images_path+"/"+img2_name)
 
         img1_noskin = remove_skin_hsv(img1)
@@ -368,12 +420,15 @@ elif task == 4:
         POINTS_THRESH = 4
         MAX_ITERS = 200
         
+        scale_factor1 = img_template.shape[0] / img1.shape[0]
+        reproj_thresh1 = int(15 * scale_factor)
+        
         if(len(dst_points1)>POINTS_THRESH):# If the numeber of good matches is good enough
             H1, mask1 = cv2.findHomography(src_points1, dst_points1, cv2.RANSAC, 
-                                           40, maxIters=MAX_ITERS)
+                                           reproj_thresh1, maxIters=MAX_ITERS)
             good1 = False
             if (H1 is not None):
-                good1 = check_homography(H1, img1)
+                good1 = check_homography(H1, img1, scale_factor1)
             if (H1 is not None) and good1:
                 rotated1 = cv2.warpPerspective(img1, H1, (img_template.shape[1], 
                                                           img_template.shape[0]))
@@ -383,12 +438,15 @@ elif task == 4:
         else:
             print('No matches 1')
             
+        scale_factor2 = img_template.shape[0] / img2.shape[0]
+        reproj_thresh2 = int(15 * scale_factor)
+            
         if(len(dst_points2)>POINTS_THRESH):
             H2, mask2 = cv2.findHomography(src_points2, dst_points2, cv2.RANSAC, 
-                                           40, maxIters=MAX_ITERS)
+                                           reproj_thresh2, maxIters=MAX_ITERS)
             good2 = False
             if (H2 is not None):
-                good2 = check_homography(H2, img2)
+                good2 = check_homography(H2, img2, scale_factor2)
             if (H2 is not None) and good2:
                 rotated2 = cv2.warpPerspective(img2, H2, (img_template.shape[1], 
                                                           img_template.shape[0]))
@@ -424,6 +482,7 @@ elif task == 4:
         else:
             curr = prev_frame
 
-        cv2.imwrite(output_path+"/"+img1_name, curr)
+        result = cv2.addWeighted(curr, 0.5, prev_frame, 0.5, 0)
+        cv2.imwrite(output_path+"/"+img1_name, result)
         prev_frame = curr
         
