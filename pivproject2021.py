@@ -173,6 +173,19 @@ def remove_skin_hsv(frame):
     noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(skinRegionHSV))    
     return noSkinHSV
 
+def remove_skin_sleeve_hsv(frame):
+    min_skin_HSV = np.array([0, 58, 30], dtype = "uint8")
+    max_skin_HSV = np.array([33, 255, 255], dtype = "uint8")
+    min_sleeve_HSV = np.array([90, 80, 9], dtype = "uint8")
+    max_sleeve_HSV = np.array([131, 224, 60], dtype = "uint8")
+    min_sleeve_HSV = np.array([90,100,0],dtype="uint8")
+    max_sleeve_HSV = np.array([120,180,80],dtype="uint8")
+    imageHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    skinRegionHSV = cv2.inRange(imageHSV, min_skin_HSV, max_skin_HSV)
+    sleeveRegionHSV = cv2.inRange(imageHSV, min_sleeve_HSV, max_sleeve_HSV)
+    noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(cv2.bitwise_or(skinRegionHSV,sleeveRegionHSV)))    
+    return noSkinHSV
+
 # Values are taken from: 'RGB-H-CbCr Skin Colour Model for Human Face Detection'
 # (R > 95) AND (G > 40) AND (B > 20) AND (max{R, G, B} − min{R, G, B} > 15) AND (|R − G| > 15) AND (R > G) AND (R > B)
 # (R > 220) AND (G > 210) AND (B > 170) AND (|R − G| ≤ 15) AND (R > B) AND (G > B)
@@ -395,10 +408,10 @@ elif task == 4:
         curr = None
         
         if rotated1 is not None:
-            img1_noskin = remove_skin_hsv(rotated1)
+            img1_noskin = remove_skin_sleeve_hsv(rotated1)
             curr = img1_noskin
         if rotated2 is not None:
-            img2_noskin = remove_skin_hsv(rotated2)
+            img2_noskin = remove_skin_sleeve_hsv(rotated2)
             if curr is not None:
                 gray1 = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
                 mask1 = cv2.threshold(gray1, 0, 255, cv2.THRESH_BINARY_INV)[1]
