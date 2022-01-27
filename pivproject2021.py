@@ -141,6 +141,7 @@ def compute_SIFT(image_1, image_2, des_2, key_2, detector, flann, MIN_MATCH_COUN
 Functions used for Task4
 ************************
 """
+"""
 def remove_skin_sleeve_hsv(frame):
     min_skin_HSV = np.array([0, 58, 30], dtype = "uint8")
     max_skin_HSV = np.array([33, 255, 255], dtype = "uint8")
@@ -151,6 +152,20 @@ def remove_skin_sleeve_hsv(frame):
     sleeveRegionHSV = cv2.inRange(imageHSV, min_sleeve_HSV, max_sleeve_HSV)
     noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(cv2.bitwise_or(skinRegionHSV,sleeveRegionHSV)))    
     return noSkinHSV
+"""
+def remove_skin_sleeve_hsv(frame):
+    min_skin_HSV = np.array([0, 58, 30], dtype = "uint8")
+    max_skin_HSV = np.array([33, 255, 255], dtype = "uint8")
+    min_sleeve_HSV = np.array([10,0,0],dtype="uint8")
+    max_sleeve_HSV = np.array([120,255,80],dtype="uint8")
+    imageHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    skinRegionHSV = cv2.inRange(imageHSV, min_skin_HSV, max_skin_HSV)
+    closedSkin = cv2.morphologyEx(skinRegionHSV, cv2.MORPH_CLOSE, np.ones((121,121),np.uint8))
+    sleeveRegionHSV = cv2.inRange(imageHSV, min_sleeve_HSV, max_sleeve_HSV)
+    noSleeveNoSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(cv2.bitwise_or(closedSkin,
+                                                                                            sleeveRegionHSV)))
+    return noSleeveNoSkinHSV
+
 
 def check_homography(H, img, scale_factor):
     det2 = H[0,0] * H[1,1] - H[0,1] * H[1,0]
@@ -383,7 +398,7 @@ elif task == 4:
         result = curr
         #result = cv2.addWeighted(curr, 0.5, prev_frame, 0.5, 0)
         cv2.imwrite(output_path+"/"+img1_name, result)
-        prev_frame = curr
+        #prev_frame = curr
     
     
     

@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import time
 import matplotlib.pyplot as plt
 
 def remove_background_gray(gray_frame):
@@ -55,11 +54,12 @@ def remove_skin_sleeve_hsv(frame):
     max_sleeve_HSV = np.array([120,255,80],dtype="uint8")
     imageHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     skinRegionHSV = cv2.inRange(imageHSV, min_skin_HSV, max_skin_HSV)
+    closedNoSkin = cv2.morphologyEx(cv2.bitwise_not(skinRegionHSV), cv2.MORPH_OPEN, np.ones((9,9),np.uint8))
     sleeveRegionHSV = cv2.inRange(imageHSV, min_sleeve_HSV, max_sleeve_HSV)
-    noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(cv2.bitwise_or(skinRegionHSV,sleeveRegionHSV)))    
-    return noSkinHSV
+    noSleeveNoSkinHSV = cv2.bitwise_and(closedNoSkin, closedNoSkin, mask = cv2.bitwise_not(sleeveRegionHSV))    
+    return noSleeveNoSkinHSV
 
-img4 = remove_skin_sleeve_hsv(img10)
+img4 = remove_skin_sleeve_hsv(img3)
 plt.figure(1)
 plt.imshow(img4)
 plt.show()
