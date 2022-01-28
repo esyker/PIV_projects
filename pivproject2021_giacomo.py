@@ -182,6 +182,36 @@ def get_mask_sleeve(frame):
     mask = cv2.threshold(mask, 0, 255, cv2.THRESH_BINARY_INV)[1]
     return mask
 
+def get_diff_mask(img1, img2):
+    img1_mod = cv2.convertScaleAbs(img1, alpha=1.1)
+    img1_mod = cv2.normalize(img1_mod, img1_mod, 0, 255, cv2.NORM_MINMAX)
+    img1_mod = cv2.GaussianBlur(img1_mod, (0,0), 15, 15)
+    img2_mod = cv2.convertScaleAbs(img2, alpha=1.1)
+    img2_mod = cv2.normalize(img2_mod, img2_mod, 0, 255, cv2.NORM_MINMAX)
+    img2_mod = cv2.GaussianBlur(img2_mod, (0,0), 15, 15)
+    
+    img1_gray = cv2.cvtColor(img1_mod, cv2.COLOR_BGR2GRAY)
+    img2_gray = cv2.cvtColor(img2_mod, cv2.COLOR_BGR2GRAY)
+    
+    # Compute SSIM between two images
+    (score, diff) = structural_similarity(img1_gray, img2_gray, full=True)
+    diff = (diff * 255).astype("uint8")
+    
+    # Threshold the difference image, followed by finding contours to
+    # obtain the regions of the two input images that differ
+    thresh = cv2.threshold(diff, 230, 255, cv2.THRESH_BINARY_INV)[1]
+    contours = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = contours[0] if len(contours) == 2 else contours[1]
+    
+    areas = np.zeros(img1.shape, dtype='uint8')
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area > ((img1.shape[0]/100) * (img1.shape[1]/100)):
+            x,y,w,h = cv2.boundingRect(c)
+            cv2.drawContours(areas, [c], 0, (255,255,255), -1)
+    mask = cv2.cvtColor(areas, cv2.COLOR_BGR2GRAY)
+    return mask
+
 # Values are taken from: 'RGB-H-CbCr Skin Colour Model for Human Face Detection'
 # (R > 95) AND (G > 40) AND (B > 20) AND (max{R, G, B} − min{R, G, B} > 15) AND (|R − G| > 15) AND (R > G) AND (R > B)
 # (R > 220) AND (G > 210) AND (B > 170) AND (|R − G| ≤ 15) AND (R > B) AND (G > B)
