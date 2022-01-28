@@ -250,7 +250,9 @@ output_path = sys.argv[3]
 if task==1:
     input_images_path = sys.argv[4]
     img_template = cv2.imread(template_path)
+    #Arucos from the template
     referenceArucos = getArucos(img_template)
+    #Coordinates from the Arucos' corners in the template
     referenceCorners=getReferenceCorners(referenceArucos)
     input_images = os.listdir(input_images_path)
     for i in range(len(input_images)):
@@ -258,7 +260,9 @@ if task==1:
         frame = cv2.imread(input_images_path+"/"+img_name)
         arucos=getArucos(frame)
         if(len(arucos["ids"])>0):
+            #Corners from the frame
             corners = getSourceCorners(arucos)
+            #Corresponding corners from the template
             destCorners = getDestCorners(arucos["ids"],referenceCorners)
             H = findHomography(corners, destCorners)
         rotated = cv2.warpPerspective(frame,H, (img_template.shape[1],img_template.shape[0]))
