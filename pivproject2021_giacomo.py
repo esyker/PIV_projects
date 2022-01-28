@@ -162,6 +162,26 @@ def remove_skin_hsv(frame):
     noSkinHSV = cv2.bitwise_and(frame, frame, mask = cv2.bitwise_not(skinRegionHSV))    
     return noSkinHSV
 
+def get_mask_skin(frame):
+    min_skin_HSV = np.array([0, 58, 30], dtype = "uint8")
+    max_skin_HSV = np.array([33, 255, 255], dtype = "uint8")
+    imageHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    skinRegionHSV = cv2.inRange(imageHSV, min_skin_HSV, max_skin_HSV)
+    skinRegionHSV = cv2.morphologyEx(skinRegionHSV, cv2.MORPH_CLOSE, np.ones((121,121), np.uint8))
+    mask = cv2.GaussianBlur(skinRegionHSV, (0,0), 9, 9)
+    mask = cv2.threshold(mask, 0, 255, cv2.THRESH_BINARY_INV)[1]
+    return mask
+
+def get_mask_sleeve(frame):
+    min_sleeve_HSV = np.array([10,0,0],dtype="uint8")
+    max_sleeve_HSV = np.array([120,255,80],dtype="uint8")
+    imageHSV = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    sleeveRegionHSV = cv2.inRange(imageHSV, min_sleeve_HSV, max_sleeve_HSV)
+    sleeveRegionHSV = cv2.morphologyEx(sleeveRegionHSV, cv2.MORPH_CLOSE, np.ones((121,121), np.uint8))
+    mask = cv2.GaussianBlur(sleeveRegionHSV, (0,0), 9, 9)
+    mask = cv2.threshold(mask, 0, 255, cv2.THRESH_BINARY_INV)[1]
+    return mask
+
 # Values are taken from: 'RGB-H-CbCr Skin Colour Model for Human Face Detection'
 # (R > 95) AND (G > 40) AND (B > 20) AND (max{R, G, B} − min{R, G, B} > 15) AND (|R − G| > 15) AND (R > G) AND (R > B)
 # (R > 220) AND (G > 210) AND (B > 170) AND (|R − G| ≤ 15) AND (R > B) AND (G > B)
@@ -245,6 +265,10 @@ def check_homography(H, img, scale_factor):
         return False
     if (det3_len < (scale_factor/MAX_SCALE)) or (det3_len > (scale_factor*MAX_SCALE)):
         return False
+    if (det2_len < (ratio_len/MAX_SCALE)) or (det2_len > (ratio_len*MAX_SCALE)):
+        return False
+    if (det3_len < (ratio_len/MAX_SCALE)) or (det3_len > (ratio_len*MAX_SCALE)):
+        return False
     return True
 
 def get_diff_mask(img1, img2):
@@ -315,8 +339,9 @@ if task==1:
 # 2 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa2/phone2
 elif task==2:
     input_images_path = sys.argv[4]
-    img_template = cv2.imread(template_path)
     input_images = os.listdir(input_images_path)
+    img_template = cv2.imread(template_path)
+    template_norm = cv2.normalize(img_template, None, 0, 255, cv2.NORM_MINMAX)
     
     detector = cv2.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
@@ -327,15 +352,16 @@ elif task==2:
     index_parameters = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
-    
-    H_prev = None
 
-    START = 0
+    START = 150
+    miss_count = 0
+    prev_frame = template_norm
     
     for i in range(START, len(input_images)):
         img_name = input_images[i]
         print("\n"+img_name)
         frame = cv2.imread(input_images_path+"/"+img_name)
+
         #Find dst_points and src_points using SIFT
         src_points, dst_points = compute_SIFT(frame, img_template, 
                                               des_template, key_template, 
@@ -343,7 +369,7 @@ elif task==2:
                                               ratio_tresh=RATIO_TRESH)
 
         POINTS_THRESH = 4
-        MAX_ITERS = 200
+        MAX_ITERS = 300
         
         scale_factor = img_template.shape[0] / frame.shape[0]
         reproj_thresh = int(15 * scale_factor)
@@ -358,31 +384,46 @@ elif task==2:
                 good = check_homography(H, frame, scale_factor)
             if (H is None) or (not good):
                 print('### No H')
-                H = H_prev
+                miss_count = 1
+            else:
+                miss_count = 0
         else :
             # If the numeber of good matches is not good enough, do not compute the homography
             # Print an error message
             print('### No matches')
-            H = H_prev
+            miss_count = 1
             
-        if (H is None):
+        if (H is None) or (miss_count > 0):
+            cv2.imwrite(output_path+"/"+img_name, prev_frame)
             continue
         
         rotated = cv2.warpPerspective(frame, H, (img_template.shape[1], 
                                                  img_template.shape[0]))
-        cv2.imwrite(output_path+"/"+img_name, rotated)
+        rotated = cv2.normalize(rotated, None, 0, 255, cv2.NORM_MINMAX)
         
+        #mask_skin = get_mask_skin(rotated)
+        #mask_diff = get_mask_diff(rotated, template_norm)
+        #mask = cv2.bitwise_and(mask_skin, mask_diff)
+        #mask_inv = cv2.bitwise_not(mask)
+        #curr_fg = cv2.bitwise_and(rotated, rotated, mask=mask)
+        #temp_bg = cv2.bitwise_and(template_norm, template_norm, mask=mask_inv)
+        #result = cv2.add(curr_fg, temp_bg)
+        result = rotated
+        
+        cv2.imwrite(output_path+"/"+img_name, result)
         H_prev = H
+        prev_frame = result
 
 # 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/phone Dataset/TwoCameras/ulisboa1/photo
 # 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa2/phone2 Dataset/TwoCameras/ulisboa2/photo2
 # 4 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus Dataset/GoogleGlass/glass
 elif task == 4:
-    img_template = cv2.imread(template_path)
     camera1_images_path = sys.argv[4]
     camera2_images_path = sys.argv[5]
     camera1_images = os.listdir(camera1_images_path)
     camera2_images = os.listdir(camera2_images_path)
+    img_template = cv2.imread(template_path)
+    template_norm = cv2.normalize(img_template, None, 0, 255, cv2.NORM_MINMAX)
     
     detector = cv2.SIFT_create()# SIFT detector
     key_template, des_template = detector.detectAndCompute(img_template, None)
@@ -394,9 +435,8 @@ elif task == 4:
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
     
-    prev_frame = img_template
-    
-    START = 225
+    START = 1004
+    prev_frame = template_norm
     
     for i in range(START, len(camera1_images)):
         img1_name = camera1_images[i]
@@ -404,9 +444,6 @@ elif task == 4:
         print(img1_name)
         img1 = cv2.imread(camera1_images_path+"/"+img1_name)
         img2 = cv2.imread(camera2_images_path+"/"+img2_name)
-
-        img1_noskin = remove_skin_hsv(img1)
-        img2_noskin = remove_skin_hsv(img2)
 
         src_points1, dst_points1 = compute_SIFT(img1, img_template, 
                                                 des_template, key_template, 
@@ -418,39 +455,43 @@ elif task == 4:
                                                 ratio_tresh=RATIO_TRESH)
         
         POINTS_THRESH = 4
-        MAX_ITERS = 200
+        MAX_ITERS = 300
         
         scale_factor1 = img_template.shape[0] / img1.shape[0]
-        reproj_thresh1 = int(15 * scale_factor)
+        reproj_thresh1 = int(15 * scale_factor1)
         
+        rotated1 = None
         if(len(dst_points1)>POINTS_THRESH):# If the numeber of good matches is good enough
             H1, mask1 = cv2.findHomography(src_points1, dst_points1, cv2.RANSAC, 
                                            reproj_thresh1, maxIters=MAX_ITERS)
             good1 = False
             if (H1 is not None):
                 good1 = check_homography(H1, img1, scale_factor1)
-            if (H1 is not None) and good1:
+            if (H1 is not None) and (good1):
                 rotated1 = cv2.warpPerspective(img1, H1, (img_template.shape[1], 
                                                           img_template.shape[0]))
-                cv2.imwrite(output_path+"/"+"1"+img1_name,rotated1)
+                rotated1 = cv2.normalize(rotated1, None, 0, 255, cv2.NORM_MINMAX)
+                #cv2.imwrite(output_path+"/"+"1"+img1_name,rotated1)
             else:
                 print('No H1')
         else:
             print('No matches 1')
             
         scale_factor2 = img_template.shape[0] / img2.shape[0]
-        reproj_thresh2 = int(15 * scale_factor)
+        reproj_thresh2 = int(15 * scale_factor2)
             
+        rotated2 = None
         if(len(dst_points2)>POINTS_THRESH):
             H2, mask2 = cv2.findHomography(src_points2, dst_points2, cv2.RANSAC, 
                                            reproj_thresh2, maxIters=MAX_ITERS)
             good2 = False
             if (H2 is not None):
                 good2 = check_homography(H2, img2, scale_factor2)
-            if (H2 is not None) and good2:
+            if (H2 is not None) and (good2):
                 rotated2 = cv2.warpPerspective(img2, H2, (img_template.shape[1], 
                                                           img_template.shape[0]))
-                cv2.imwrite(output_path+"/"+"2"+img2_name,rotated2)
+                rotated2 = cv2.normalize(rotated2, None, 0, 255, cv2.NORM_MINMAX)
+                #cv2.imwrite(output_path+"/"+"2"+img2_name,rotated2)
             else:
                 print('No H2')
         else:
@@ -459,30 +500,38 @@ elif task == 4:
         curr = None
         
         if rotated1 is not None:
-            img1_noskin = remove_skin_hsv(rotated1)
-            curr = img1_noskin
+            curr = rotated1
         if rotated2 is not None:
-            img2_noskin = remove_skin_hsv(rotated2)
             if curr is not None:
-                gray1 = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
-                mask1 = cv2.threshold(gray1, 0, 255, cv2.THRESH_BINARY_INV)[1]
-                mask1_inv = cv2.bitwise_not(mask1)
-                curr1_bg = cv2.bitwise_and(curr, curr, mask=mask1_inv)
-                img2_fg = cv2.bitwise_and(img2_noskin, img2_noskin, mask=mask1)
-                curr = cv2.add(curr1_bg, img2_fg)
+                mask_skin = get_mask_skin(curr)
+                mask_diff = get_mask_sleeve(curr)
+                bw = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
+                mask_white = cv2.threshold(bw, 0, 255, cv2.THRESH_BINARY_INV)[1]
+                mask_black = cv2.bitwise_not(mask_white)
+                mask = cv2.bitwise_and(mask_skin, mask_diff)
+                mask = cv2.bitwise_and(mask, mask_black)
+                mask_inv = cv2.bitwise_not(mask)
+                curr_fg = cv2.bitwise_and(curr, curr, mask=mask)
+                new_bg = cv2.bitwise_and(rotated2, rotated2, mask=mask_inv)
+                curr = cv2.add(curr_fg, new_bg)
             else:
-                curr = img2_noskin
+                curr = rotated2
         if curr is not None:
-            gray2 = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
-            mask2 = cv2.threshold(gray2, 0, 255, cv2.THRESH_BINARY_INV)[1]
-            mask2_inv = cv2.bitwise_not(mask2)
-            curr2_bg = cv2.bitwise_and(curr, curr, mask=mask2_inv)
-            prev_fg = cv2.bitwise_and(prev_frame, prev_frame, mask=mask2)
-            curr = cv2.add(curr2_bg, prev_fg)
+            mask_skin = get_mask_skin(curr)
+            mask_diff = get_mask_sleeve(curr)
+            bw = cv2.cvtColor(curr, cv2.COLOR_BGR2GRAY)
+            mask_white = cv2.threshold(bw, 0, 255, cv2.THRESH_BINARY_INV)[1]
+            mask_black = cv2.bitwise_not(mask_white)
+            mask = cv2.bitwise_and(mask_skin, mask_diff)
+            mask = cv2.bitwise_and(mask, mask_black)
+            mask_inv = cv2.bitwise_not(mask)
+            curr_fg = cv2.bitwise_and(curr, curr, mask=mask)
+            new_bg = cv2.bitwise_and(template_norm, template_norm, mask=mask_inv)
+            curr = cv2.add(curr_fg, new_bg)
         else:
             curr = prev_frame
 
-        result = cv2.addWeighted(curr, 0.5, prev_frame, 0.5, 0)
+        result = curr
         cv2.imwrite(output_path+"/"+img1_name, result)
-        prev_frame = curr
+        prev_frame = result
         
