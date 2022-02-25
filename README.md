@@ -15,6 +15,22 @@ Precision is a key issue here, since it influences the quality of the rendering.
 
 * Task 4 -  Two rgb cameras
 
+## Some of the results
 
-Check a description video of the project here: 
+![image](https://user-images.githubusercontent.com/50277636/155801863-4bcdbdc1-257b-4fbc-a003-ec3b153c424d.png)
+
+![image](https://user-images.githubusercontent.com/50277636/155801887-54be24b1-60d0-46be-87b6-9efdc6a115a0.png)
+
+![image](https://user-images.githubusercontent.com/50277636/155801919-e4824663-b16b-4cac-bb27-bba3432820cf.png)
+
+![image](https://user-images.githubusercontent.com/50277636/155801959-547da023-dcdc-4eb3-b625-18b726b664ae.png)
+
+![image](https://user-images.githubusercontent.com/50277636/155802058-7aa9e786-610e-4d5a-ba75-71429ad6a9d7.png)
+
+![image](https://user-images.githubusercontent.com/50277636/155801737-772ed9dd-25b7-4cb4-9784-25b4dbb9d996.png)
+
+![image](https://user-images.githubusercontent.com/50277636/155801806-5b5edf05-6aaf-4f40-ad5a-4358b18ebb0c.png)
+
+## Video of the working project
+Check a description video of the project results' here: https://youtu.be/d2I5Krl1kHM
 
