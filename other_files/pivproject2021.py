@@ -247,6 +247,10 @@ task = int(sys.argv[1])
 template_path = sys.argv[2]
 output_path = sys.argv[3]
 
+#Run with for example: 1 Dataset/template2_fewArucos.png Dataset/Output_FewArucos-Viewpoint2 Dataset/FewArucos-Viewpoint2
+#Run with for example: 1 Dataset/template2_fewArucos.png Dataset/Output_FewArucos-Viewpoint1 Dataset/FewArucos-Viewpoint1
+#Run with for example: 1 Dataset/template1_manyArucos.png Dataset/Output_ManyArucos Dataset/ManyArucos
+
 if task==1:
     input_images_path = sys.argv[4]
     img_template = cv2.imread(template_path)
@@ -267,6 +271,12 @@ if task==1:
             H = findHomography(corners, destCorners)
         rotated = cv2.warpPerspective(frame,H, (img_template.shape[1],img_template.shape[0]))
         cv2.imwrite(output_path+"/"+img_name,rotated)
+
+#Run with for example: 2 Dataset/template2_fewArucos.png Output_Images Dataset/FewArucos-Viewpoint2
+#Run with for example: 2 Dataset/formsns/templateSNS.jpg Output_Images Dataset/formsns/receitaSNS
+#Run with for example: 2 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/glass
+#Run with for example: 2 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus
+#Run with for example: 2 Dataset/Gehry/Template_Gehry.jpg Output_Images Dataset/Gehry/images
 
 elif task==2:
     input_images_path = sys.argv[4]
@@ -346,6 +356,9 @@ elif task==2:
         # Update the last good frame
         prev_frame = rotated
 
+# 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa1/phone Dataset/TwoCameras/ulisboa1/photo
+# 4 Dataset/TwoCameras/ulisboatemplate.jpg Output_Images Dataset/TwoCameras/ulisboa2/phone2 Dataset/TwoCameras/ulisboa2/photo2
+# 4 Dataset/GoogleGlass/template_glass.jpg Output_Images Dataset/GoogleGlass/nexus Dataset/GoogleGlass/glass
 elif task == 4:
     camera1_images_path = sys.argv[4]
     camera2_images_path = sys.argv[5]
@@ -365,7 +378,7 @@ elif task == 4:
     search_parameters = dict(checks = 70)
     flann = cv2.FlannBasedMatcher(index_parameters, search_parameters)
     
-    START = 0
+    START = 760
     prev_frame = template_norm
     
     # Compute the scale factors for the two inputs
